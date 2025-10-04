@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import './ClientsList.css';
+import { FaSave, FaTimes, FaEdit, FaTrash } from 'react-icons/fa'; // Import icons
 
 const ClientsList = () => {
   const [clients, setClients] = useState([]);
@@ -11,6 +12,7 @@ const ClientsList = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [clientsPerPage] = useState(10);
+  const [subscriptions, setSubscriptions] = useState([]);
   const [statusFilter, setStatusFilter] = useState('all');
   const [editingClient, setEditingClient] = useState(null);
   const [formData, setFormData] = useState({
@@ -42,14 +44,20 @@ const ClientsList = () => {
           params
         });
 
+        const subsResponse = await axios.get('http://localhost:5000/subscriptions', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
         setClients(response.data.clients || []);
+        setSubscriptions(subsResponse.data || []);
         setCurrentPage(1);
       } catch (err) {
         if (err.response?.status === 401) {
           localStorage.removeItem('access_token');
           navigate('/admin/login');
+        } else {
+          setError(err.response?.data?.error || 'Failed to fetch data');
         }
-        setError(err.response?.data?.error || 'Failed to fetch clients');
       } finally {
         setLoading(false);
       }
@@ -59,13 +67,6 @@ const ClientsList = () => {
     return () => clearTimeout(debounceTimer);
   }, [searchTerm, statusFilter, navigate]);
 
-  const filteredClients = clients.filter(client =>
-    (client.first_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      client.last_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      client.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      client.phone?.includes(searchTerm))
-  );
-
   const startEditing = (client) => {
     setEditingClient(client.id);
     setFormData({
@@ -73,12 +74,11 @@ const ClientsList = () => {
       last_name: client.last_name,
       email: client.email,
       phone: client.phone,
-      subscription_id: client.subscription_id || ''
+      subscription_id: client.subscription_id || ""
     });
   };
 
-  const handleUpdateClient = async (e) => {
-    e.preventDefault();
+  const handleSaveClient = async () => {
     try {
       const token = localStorage.getItem("access_token");
       const response = await axios.patch(
@@ -95,7 +95,7 @@ const ClientsList = () => {
 
       setClients((prev) =>
         prev.map((c) =>
-          c.id === editingClient ? response.data.client : c
+          c.id === editingClient ? { ...c, ...response.data.client } : c
         )
       );
 
@@ -118,29 +118,30 @@ const ClientsList = () => {
 
     try {
       const token = localStorage.getItem("access_token");
-      await axios.delete(`http://localhost:5000/clients/${clientId}`, {
+      const response = await axios.delete(`http://localhost:5000/clients/${clientId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setClients(prev => prev.filter(client => client.id !== clientId));
+      setActionMessage(response.data.message || 'Client deleted successfully!');
     } catch (err) {
-      setActionMessage(err.response?.data?.error || "Failed to delete client");
+      setActionMessage(err.response?.data?.error || err.response?.data?.message || "Failed to delete client");
     }
   };
 
   // Pagination
   const indexOfLastClient = currentPage * clientsPerPage;
   const indexOfFirstClient = indexOfLastClient - clientsPerPage;
-  const currentClients = filteredClients.slice(indexOfFirstClient, indexOfLastClient);
-  const totalPages = Math.ceil(filteredClients.length / clientsPerPage);
+  const currentClients = clients.slice(indexOfFirstClient, indexOfLastClient);
+  const totalPages = Math.ceil(clients.length / clientsPerPage);
 
   if (loading) return <div className="loading">Loading clients...</div>;
   if (error) return <div className="error">{error}</div>;
 
   return (
-    <div className="clients-container">
+    <div className="clients-page-container">
+      <div className="clients-card">
       <div className="clients-header">
         <h2>Client Management</h2>
-        {actionMessage && <p className={actionMessage.toLowerCase().includes('fail') ? 'message-error' : 'message-success'}>{actionMessage}</p>}
         <div className="filters">
           <div className="search-box">
             <input
@@ -161,11 +162,16 @@ const ClientsList = () => {
             <option value="inactive">Inactive</option>
             <option value="pending">Pending</option>
           </select>
+          <button type="button" className="btn btn-secondary" onClick={() => navigate('/dashboard/admin')}>
+            Back to Dashboard
+          </button>
         </div>
       </div>
 
+      {actionMessage && <p className={actionMessage.toLowerCase().includes('fail') ? 'message-error' : 'message-success'}>{actionMessage}</p>}
+
       <div className="clients-table-container">
-        <form onSubmit={handleUpdateClient}>
+        
           <table className="clients-table">
             <thead>
               <tr>
@@ -181,7 +187,7 @@ const ClientsList = () => {
               {currentClients.length > 0 ? (
                 currentClients.map((client) =>
                   editingClient === client.id ? (
-                    // Edit Row
+                    // Edit Row - Note: Not using a <form> tag here for simplicity
                     <tr key={client.id}>
                       <td>
                         <input type="text" value={formData.first_name} onChange={(e) => setFormData({...formData, first_name: e.target.value})} className="input-field" />
@@ -189,11 +195,24 @@ const ClientsList = () => {
                       </td>
                       <td><input type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} className="input-field" /></td>
                       <td><input type="tel" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} className="input-field" /></td>
-                      <td><input type="text" value={formData.subscription_id} onChange={(e) => setFormData({...formData, subscription_id: e.target.value})} className="input-field" placeholder="Sub ID" /></td>
+                      <td>
+                        <select
+                          value={formData.subscription_id}
+                          onChange={(e) => setFormData({ ...formData, subscription_id: e.target.value })}
+                          className="input-field"
+                        >
+                          <option value="">No Subscription</option>
+                          {subscriptions.map((sub) => (
+                            <option key={sub.id} value={sub.id}>
+                              {sub.name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
                       <td><span className={`status-badge ${client.status?.toLowerCase()}`}>{client.status || 'Active'}</span></td>
                       <td className="actions">
-                        <button type="submit" className="btn btn-primary">💾 Save</button>
-                        <button type="button" className="btn btn-secondary" onClick={() => setEditingClient(null)}>✖ Cancel</button>
+                        <button type="button" className="btn btn-primary" onClick={handleSaveClient}><FaSave /> Save</button>
+                        <button type="button" className="btn btn-secondary" onClick={() => setEditingClient(null)}><FaTimes /> Cancel</button>
                       </td>
                     </tr>
                   ) : (
@@ -214,8 +233,8 @@ const ClientsList = () => {
                         </span>
                       </td>
                       <td className="actions">
-                        <button type="button" className="btn btn-secondary" onClick={() => startEditing(client)}>✏️ Edit</button>
-                        <button type="button" className="btn btn-danger" onClick={() => handleDeleteClient(client.id)}>🗑️ Delete</button>
+                        <button type="button" className="btn btn-secondary" onClick={() => startEditing(client)}><FaEdit /> Edit</button>
+                        <button type="button" className="btn btn-danger" onClick={() => handleDeleteClient(client.id)}><FaTrash /> Delete</button>
                       </td>
                     </tr>
                   )
@@ -229,7 +248,7 @@ const ClientsList = () => {
               )}
             </tbody>
           </table>
-        </form>
+        
       </div>
 
 
@@ -244,6 +263,7 @@ const ClientsList = () => {
           </button>
         </div>
       )}
+      </div>
     </div>
   );
 };

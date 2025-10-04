@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+import "./Auth.css"; // For shared input/button styles
 import "./Payment.css";
 import { useNavigate } from "react-router-dom";
 
@@ -9,7 +10,6 @@ const MpesaPayment = () => {
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
-  const [email, setEmail] = useState("");
   const navigate = useNavigate();
   const Popup = ({ message, onClose }) => {
     if (!message) return null;
@@ -18,7 +18,7 @@ const MpesaPayment = () => {
       <div className="popup-overlay">
         <div className="popup-box">
           <p>{message}</p>
-          <button onClick={onClose}>OK</button>
+          <button onClick={onClose} className="btn btn-primary">OK</button>
         </div>
       </div>
     );
@@ -71,12 +71,12 @@ const MpesaPayment = () => {
   };
 
   return (
-    <div className="mpesa-container">
-      <h2>M-PESA Subscription Payment</h2>
-
-      <form onSubmit={handlePayment} className="mpesa-form">
-        <label>
-          Select Plan:
+    <div className="auth-container">
+      <div className="auth-card">
+        <h2>M-PESA Subscription Payment</h2>
+        <form onSubmit={handlePayment}>
+          <div className="form-group">
+            <label>Select Plan:</label>
           <select
             value={selectedPlan}
             onChange={(e) => setSelectedPlan(e.target.value)}
@@ -89,10 +89,10 @@ const MpesaPayment = () => {
               </option>
             ))}
           </select>
-        </label>
+          </div>
 
-        <label>
-          Phone Number (2547XXXXXXXX):
+          <div className="form-group">
+            <label>Phone Number (2547XXXXXXXX):</label>
           <input
             type="tel"
             value={phone}
@@ -100,28 +100,23 @@ const MpesaPayment = () => {
             className="input-field"
             placeholder="2547XXXXXXXX"
           />
-        </label>
+          </div>
 
-        <label>
-          Email:
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="input-field"
-          />
-        </label>
-
-        <button type="submit" className="btn btn-primary" disabled={loading}>
+        <button 
+          type="submit" 
+          className="btn btn-primary" 
+          disabled={loading} 
+          >
           {loading ? "Processing..." : "Pay with M-PESA"}
         </button>
 
         <button type="button" 
-        className="btn btn-secondary"
-        onClick={() => navigate('/dashboard/client')}>
+          className="btn btn-secondary"
+          onClick={() => navigate('/dashboard/client')} >
           Back to Dashboard
         </button>
-      </form>
+        </form>
+      </div>
 
     {message && <Popup message={message} onClose={() => setMessage("")} />}
     </div>

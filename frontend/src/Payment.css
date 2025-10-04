@@ -1,1 +1,34 @@
+/* Styles for the confirmation popup */
+.popup-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
 
+.popup-box {
+  background: #2c2c2c; /* Darker background for popup */
+  color: var(--text-color);
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+  text-align: center;
+  max-width: 400px;
+  width: 90%;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.popup-box p {
+  margin-bottom: 1.5rem;
+}
+
+.popup-box button {
+  /* Inherit from .btn, .btn-primary in shared.css */
+  width: 100px;
+}

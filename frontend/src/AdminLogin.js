@@ -12,7 +12,7 @@ function AdminLogin() {
   const handleLogin = async () => {
     try {
       const res = await axios.post("http://localhost:5000/admin/login", { email, password });
-      const token = res.data.token;
+      const token = res.data.access_token;
       localStorage.setItem("access_token", token);
       setMessage("Login successful!");
       navigate("/dashboard/admin");

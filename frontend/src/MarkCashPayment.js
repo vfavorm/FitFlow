@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import './MarkCash.css';
+import "./Auth.css"; // Using shared Auth.css for consistent styling
 
 const PaymentLoggingForm = () => {
   const [formData, setFormData] = useState({
-    phone: '',
+    email: '',
     subscription: '',
     payment_status: 'success',
     amount: '',
@@ -14,8 +14,10 @@ const PaymentLoggingForm = () => {
 
   const [clients, setClients] = useState([]);
   const [subscriptions, setSubscriptions] = useState([]);
+  const [filteredSubscriptions, setFilteredSubscriptions] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [balanceInfo, setBalanceInfo] = useState('');
   const [errors, setErrors] = useState({});
   const navigate = useNavigate();
 
@@ -25,16 +27,25 @@ const PaymentLoggingForm = () => {
         setIsLoading(true);
         const token = localStorage.getItem('access_token');
 
-        const [clientsRes, subsRes] = await Promise.all([
-          axios.get('/clients', { headers: { Authorization: `Bearer ${token}` } }),
-          axios.get('/subscriptions', { headers: { Authorization: `Bearer ${token}` } }),
-        ]);
+        const clientsRes = await axios.get('http://localhost:5000/clients', { headers: { Authorization: `Bearer ${token}` } });
+        const subsRes = await axios.get('http://localhost:5000/subscriptions', { headers: { Authorization: `Bearer ${token}` } });
 
-        setClients(clientsRes.data?.clients || []);
-        setSubscriptions(Array.isArray(subsRes.data) ? subsRes.data : []);
+        const clientsList = clientsRes.data?.clients || [];
+        const subsList = Array.isArray(subsRes.data) ? subsRes.data : [];
+
+        setClients(clientsList);
+        setSubscriptions(subsList);
+        setFilteredSubscriptions(subsList);
+        // --- FIX: Set a default subscription ---
+        if (subsList.length > 0) {
+          setFormData(prev => ({
+            ...prev,
+            subscription: subsList[0].name,
+          }));
+        }
       } catch (error) {
         console.error('Error fetching data:', error);
-        setMessage('Failed to load clients or subscriptions');
+        setMessage('Failed to load data');
       } finally {
         setIsLoading(false);
       }
@@ -46,6 +57,37 @@ const PaymentLoggingForm = () => {
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+
+    if (name === 'email') {
+      const selectedClient = clients.find(c => c.email === value);
+      if (selectedClient) {
+        fetchClientBalance(selectedClient.id);
+        // Filter out the plan the client already has
+        if (selectedClient.subscription) {
+          setFilteredSubscriptions(subscriptions);
+        }
+      } else {
+        setBalanceInfo('');
+        setFilteredSubscriptions(subscriptions);
+      }
+    }
+  };
+
+  const fetchClientBalance = async (clientId) => {
+    try {
+      const token = localStorage.getItem('access_token');
+      const res = await axios.get(`http://localhost:5000/client/${clientId}/balance`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const balance = res.data.account_balance;
+      if (balance < 0) {
+        setBalanceInfo(`This client has an outstanding debt of KES ${Math.abs(balance).toFixed(2)}.`);
+      } else if (balance > 0) {
+        setBalanceInfo(`This client has a credit of KES ${balance.toFixed(2)}.`);
+      } else {
+        setBalanceInfo(''); // Clear info if balance is zero or not applicable
+      }
+    } catch (err) { console.error("Failed to fetch balance", err); }
   };
 
   const handleSubmit = async (e) => {
@@ -57,26 +99,32 @@ const PaymentLoggingForm = () => {
     try {
       const token = localStorage.getItem('access_token');
       const payload = {
-        phone: formData.phone,
+        email: formData.email,
         subscription: formData.subscription,
         payment_status: formData.payment_status,
         amount: formData.amount ? Number(formData.amount) : null,
         payment_date: formData.payment_date,
       };
 
-      const { data } = await axios.post('/markCashPayment', payload, {
+      const { data } = await axios.post('http://localhost:5000/markCashPayment', payload, {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       });
 
-      setMessage(
-        [
-          `Payment processed for: ${data.client}`,
-          `Plan: ${data.subscription}`,
-          `Status: ${data.payment_status}`,
-          data.new_expiry ? `New expiry: ${data.new_expiry}` : null,
-          data.note ? data.note : null,
-        ].filter(Boolean).join('\n')
-      );
+      // Handle different success messages for subscription vs. debt payment
+      if (data.new_balance !== undefined) {
+        setMessage(`Debt payment of KES ${data.amount_paid.toFixed(2)} recorded for ${data.client}. New balance is KES ${data.new_balance.toFixed(2)}.`);
+      } else {
+        setMessage(
+          [
+            `Payment processed for: ${data.client}`,
+            `Plan: ${data.subscription}`,
+            `Status: ${data.payment_status}`,
+            data.new_expiry ? `New expiry: ${data.new_expiry}` : null,
+            data.note ? data.note : null,
+            data.credit ? `Credit Balance: KES ${data.credit.toFixed(2)}` : null,
+          ].filter(Boolean).join('\n')
+        );
+      }
     } catch (error) {
       console.error('Payment logging failed:', error);
       setMessage(
@@ -91,33 +139,28 @@ const PaymentLoggingForm = () => {
   };
 
   return (
-    <div className="payment-logging-container">
-      {/* Back to Dashboard */}
-      <button className="btn btn-secondary" onClick={() => navigate('/admin/dashboard')}>
-        ← Back to Dashboard
-      </button>
+    <div className="auth-container">
+      <div className="auth-card">
+        <h2>Record Manual Payment</h2>
 
-      <h2>Record Manual Payment</h2>
-
-      <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit}>
         <div className="form-group">
-          <label>Client Phone:</label>
+          <label>Client Email:</label>
           <input
-            list="client-phones"
-            name="phone"
-            value={formData.phone}
+            list="client-emails"
+            name="email"
+            value={formData.email}
             className="input-field"
             onChange={handleChange}
             required
           />
-          <datalist id="client-phones">
+          <datalist id="client-emails">
             {clients.map(c => (
-              <option key={c.id} value={c.phone}>
-                {c.first_name} {c.last_name}
-              </option>
+              <option key={c.id} value={c.email}>{`${c.first_name} ${c.last_name} (${c.email})`}</option>
             ))}
           </datalist>
-          {errors.phone && <span className="message-error">{errors.phone}</span>}
+          {balanceInfo && <p className="balance-info">{balanceInfo}</p>}
+          {errors.email && <span className="message-error">{errors.email}</span>}
         </div>
 
         <div className="form-group">
@@ -129,8 +172,11 @@ const PaymentLoggingForm = () => {
             className="input-field"
             required
           >
-            <option value="">Select a plan</option>
-            {subscriptions.map(sub => (
+            <option value="" disabled>
+              Select a plan...
+            </option>
+
+            {filteredSubscriptions.map(sub => (
               <option key={sub.id} value={sub.name}>
                 {sub.name} ({sub.duration_days} days) — KES {sub.price}
               </option>
@@ -163,7 +209,7 @@ const PaymentLoggingForm = () => {
             onChange={handleChange}
             className="input-field"
             placeholder="Leave empty to use plan price"
-            min="0"
+            min="3000"
             step="1000"
           />
         </div>
@@ -184,13 +230,6 @@ const PaymentLoggingForm = () => {
           {isLoading ? 'Processing…' : 'Record Payment'}
         </button>
 
-        <button
-          type="button"
-          onClick={() => navigate('/admin/clients')}
-          className="btn btn-secondary"
-        >
-          Cancel
-        </button>
       </form>
 
       {message && (
@@ -198,6 +237,16 @@ const PaymentLoggingForm = () => {
           {message.split('\n').map((line, i) => <p key={i} className={message.toLowerCase().includes('fail') ? 'message-error' : 'message-success'}>{line}</p>)}
         </div>
       )}
+
+        <button
+          type="button"
+          onClick={() => navigate('/dashboard/admin')}
+          className="btn btn-secondary"
+          style={{ marginTop: '1rem' }}
+        >
+          Back to Dashboard
+        </button>
+      </div>
     </div>
   );
 };

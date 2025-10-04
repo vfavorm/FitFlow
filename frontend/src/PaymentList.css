@@ -1,5 +1,5 @@
-/* Main container to center the card, similar to Auth.css */
-.clients-page-container {
+/* Main container to center the card, consistent with other list pages */
+.payments-page-container {
   min-height: 100vh;
   width: 100%;
   display: flex;
@@ -12,8 +12,8 @@
   font-family: "Poppins", sans-serif;
 }
 
-/* A wider card for data tables, based on auth-card */
-.clients-card {
+/* The main glass card holding the payment history */
+.payments-card {
   background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
@@ -21,7 +21,7 @@
   padding: 2rem;
   box-shadow: 0 10px 35px rgba(0, 0, 0, 0.5);
   width: 100%;
-  max-width: 1200px; /* Wider for table content */
+  max-width: 900px;
   border: 1px solid rgba(255, 255, 255, 0.15);
   animation: fadeIn 0.8s ease-in-out;
   color: #eee;
@@ -30,74 +30,52 @@
   gap: 1.5rem;
 }
 
-/* Header section with title and filters */
-.clients-header {
+/* Header section with title and back button */
+.payments-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  flex-wrap: wrap; /* Allow wrapping on small screens */
+  flex-wrap: wrap;
   gap: 1rem;
   padding-bottom: 1rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-.clients-header h2 {
+.payments-header h2 {
   color: var(--primary-color);
   font-size: 1.8rem;
   margin: 0;
 }
 
-/* Filters container */
-.filters {
-  display: flex;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
-.filters .input-field,
-.filters .search-box input {
-  min-width: 200px;
-}
-
 /* Make table scrollable on small screens */
-.clients-table-container {
+.payments-table-container {
   width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
 
-.clients-table {
+.payments-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 900px; /* Prevent content from squishing too much */
+  min-width: 600px; /* Prevent content from squishing */
   text-align: left;
 }
 
-.clients-table th,
-.clients-table td {
+.payments-table th,
+.payments-table td {
   padding: 0.75rem 1rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   vertical-align: middle;
 }
 
-.clients-table th {
+.payments-table th {
   color: var(--primary-color);
   font-weight: 600;
   white-space: nowrap;
 }
 
-.clients-table tbody tr:hover {
+.payments-table tbody tr:hover {
   background-color: rgba(255, 255, 255, 0.05);
-}
-
-/* Inputs inside the editable table row */
-.clients-table .input-field {
-  margin-bottom: 0.25rem;
-  width: calc(100% - 10px); /* Adjust width */
-}
-.clients-table td:first-child .input-field {
-  width: calc(50% - 10px); /* For first/last name */
-  display: inline-block;
 }
 
 /* Status badges */
@@ -110,49 +88,24 @@
   color: #fff;
 }
 
-.status-badge.active { background-color: #28a745; }
-.status-badge.inactive { background-color: #6c757d; }
+.status-badge.paid { background-color: #28a745; }
 .status-badge.pending { background-color: #ffc107; color: #333; }
+.status-badge.failed { background-color: #dc3545; }
 
-.expiry-date {
-  font-size: 0.8rem;
-  color: #aaa;
-  display: block;
-}
-
-/* Action buttons in table */
-.actions {
-  display: flex;
-  gap: 0.5rem;
-  white-space: nowrap;
-}
-
-.actions .btn {
-  padding: 0.3rem 0.6rem;
-  font-size: 0.85rem;
-}
-
-/* Pagination controls */
-.pagination {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.2);
-  width: 100%;
-}
-
-.no-clients {
+.no-payments {
   text-align: center;
   padding: 2rem;
   font-style: italic;
   color: #aaa;
 }
 
-.loading, .error {
-  text-align: center;
-  padding: 2rem;
-  font-size: 1.2rem;
-  color: #fff;
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

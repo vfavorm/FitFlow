@@ -1,11 +1,11 @@
 // ProtectedRoute.js
 import { Navigate } from "react-router-dom";
 
-const ProtectedRoute = ({ children }) => {
+const ProtectedRoute = ({ children, redirectTo = "/client/login" }) => {
   const token = localStorage.getItem("access_token");
   
   if (!token) {
-    return <Navigate to="/admin/login" replace />;
+    return <Navigate to={redirectTo} replace />;
   }
   
   return children;

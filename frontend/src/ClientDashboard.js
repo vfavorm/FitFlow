@@ -99,8 +99,14 @@ return (
           />
           <div className="card-content">
             <h3>Quick Actions</h3>
-            <button className="btn btn-secondary" onClick={() => navigate("/update")}>⚙️ Update Profile</button>
-            <button className="btn btn-primary" onClick={() => navigate("/payment")}>🔄 Renew Subscription</button>
+            <button 
+              className="btn btn-secondary" 
+              onClick={() => navigate("/update")}
+            >⚙️ Update Profile</button>
+            <button 
+              className="btn btn-primary" 
+              onClick={() => navigate("/payment")}
+            >🔄 Renew Subscription</button>
           </div>
         </div>
       </div>

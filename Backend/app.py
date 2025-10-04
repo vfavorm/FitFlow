@@ -100,82 +100,122 @@ def check_expired_subscriptions():
 @scheduler.task('cron', id='send_monthly_report', day=1, hour=6)  # every 1st of the month at 6 AM
 def send_monthly_report():
     with app.app_context():
-        now = datetime.utcnow()
-        month = now.month
-        year = now.year
+        # This job runs on the 1st of the month, so we report on the *previous* month.
+        today = datetime.utcnow()
+        first_day_of_current_month = today.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        last_day_of_previous_month = first_day_of_current_month - timedelta(days=1)
+        
+        month = last_day_of_previous_month.month
+        year = last_day_of_previous_month.year
 
-        # Total expenses for the current month
+        # Total expenses for the previous month
         monthly_expenses = db.session.query(
             db.func.sum(Expense.cost)
         ).filter(
             extract('month', Expense.created_at) == month,
             extract('year', Expense.created_at) == year
         ).scalar() or 0
-
-        # Total earnings from subscriptions renewed or bought this month
-        clients = Client.query.filter(
-            extract('month', Client.subscription_expiry) == month,
-            extract('year', Client.subscription_expiry) == year
-        ).all()
-
-        total_earnings = 0
-        for client in clients:
-            if client.subscription:
-                total_earnings += client.subscription.price
+        
+        # Total earnings from successful payments for the previous month
+        total_earnings = db.session.query(
+            db.func.sum(Payment.amount)
+        ).filter(
+            Payment.status == 'Success',  # Only count successful payments
+            extract('month', Payment.created_at) == month,
+            extract('year', Payment.created_at) == year
+        ).scalar() or 0
+        
+        # Calculate net profit/loss
+        net_profit = total_earnings - monthly_expenses
 
         # Email all admins
         admins = Admin.query.all()
+        month_name = last_day_of_previous_month.strftime('%B %Y')
         for admin in admins:
             send_email(
                 to_email=admin.email,
-                subject=f"Monthly Gym Financial Report - {now.strftime('%B %Y')}",
+                subject=f"Monthly Gym Financial Report - {month_name}",
                 message=f"""
 Hello {admin.name},
 
 Here is your monthly financial report:
 
-📅 Month: {now.strftime('%B %Y')}
-💰 Total Earnings: KES {total_earnings}
-💸 Total Expenses: KES {monthly_expenses}
+📅 Month: {month_name}
+💰 Total Earnings: KES {total_earnings:.2f}
+💸 Total Expenses: KES {monthly_expenses:.2f}
+-----------------------------
+📈 Net Profit/Loss: KES {net_profit:.2f}
 
 Regards,
 FitFlow Gym Management System                """
             )
 
 class ClientResource(Resource):
+    @jwt_required()
     def patch(self, client_id):
+        # Admin check
+        # current_user_email = get_jwt_identity()
+        # if not Admin.query.filter_by(email=current_user_email).first():
+        #     return {"message": "Unauthorized access"}, 403
+
         client = Client.query.get(client_id)
         if not client:
             return {"message": "Client not found"}, 404
 
         data = request.get_json()
 
+        # Update basic details
         client.first_name = data.get("first_name", client.first_name)
         client.last_name = data.get("last_name", client.last_name)
         client.email = data.get("email", client.email)
         client.phone = data.get("phone", client.phone)
 
-        #  Handle password change
-        old_password = data.get("old_password")
-        new_password = data.get("new_password")
-
-        if old_password and new_password:
-            if not check_password(client.password_hash, old_password):
-                return {"message": "Incorrect password! Failed to update."}, 400
-
-            client.password_hash = hash_password(new_password)
+        # Handle subscription change
+        subscription_id = data.get("subscription_id")
+        if subscription_id:
+            subscription = Subscription.query.get(subscription_id)
+            if subscription:
+                client.subscription_id = subscription.id
+                # Optionally, you could reset the expiry date here if needed
+                # client.subscription_expiry = datetime.utcnow() + timedelta(days=subscription.duration_days)
+            else:
+                return {"message": "Subscription not found"}, 404
+        elif subscription_id == '': # Handle un-assigning a subscription
+            client.subscription_id = None
+            client.subscription_expiry = None
+            client.status = "Inactive"
 
         db.session.commit()
-        return {"message": "Client updated successfully", "client": client.to_dict()}, 200
+        
+        # Return the full, updated client object
+        return {
+            "message": "Client updated successfully", 
+            "client": {
+                "id": client.id,
+                "first_name": client.first_name,
+                "last_name": client.last_name,
+                "email": client.email,
+                "phone": client.phone,
+                "status": client.status,
+                "subscription": client.subscription.name if client.subscription else None,
+                "subscription_expiry": client.subscription_expiry.isoformat() if client.subscription_expiry else None,
+            }
+        }, 200
 
+    @jwt_required()
     def delete(self, client_id):
+        # Admin check
+        current_user_email = get_jwt_identity()
+        if not Admin.query.filter_by(email=current_user_email).first():
+            return {"message": "Unauthorized access"}, 403
+
         client = Client.query.get(client_id)
         if not client:
             return {"message": "Client not found"}, 404
         
         db.session.delete(client)
         db.session.commit()
-        return {"message": "Client deleted successfully"}, 200
+        return {"message": f"Client {client.first_name} {client.last_name} deleted successfully"}, 200
 
 
 class ClientLogin(Resource):
@@ -208,18 +248,18 @@ class DashboardResource(Resource):
             return {"error": "User not found"}, 404
 
         # Get subscription
-        subscription = Subscription.query.filter_by(client_id=user.id).first()
+        subscription = user.subscription
         subscription_data = {
-            "type": subscription.type if subscription else "None",
+            "type": subscription.name if subscription else "None",
             "price": subscription.price if subscription else "N/A",
-            "expiry": subscription.expiry.strftime("%d/%m/%Y") if subscription else "N/A"
+            "expiry": user.subscription_expiry.strftime("%d/%m/%Y") if user.subscription_expiry else "N/A"
         }
 
         # Get last payment
-        last_payment = Payment.query.filter_by(client_id=user.id).order_by(Payment.date.desc()).first()
+        last_payment = Payment.query.filter_by(client_id=user.id).order_by(Payment.created_at.desc()).first()
         payment_data = {
             "amount": last_payment.amount if last_payment else "N/A",
-            "date": last_payment.date.strftime("%d/%m/%Y") if last_payment else "N/A",
+            "date": last_payment.created_at.strftime("%d/%m/%Y") if last_payment else "N/A",
             "method": last_payment.method if last_payment else "N/A"
         }
 
@@ -248,23 +288,18 @@ class AdminLogin(Resource):
             )            
             return {
                 "message": "Login successful",
-                "token": token,
+                "access_token": token,
                 "user": user.to_dict()
             }, 200
         
         return {
             "message": "Invalid email or password"
-        }, 401
+        }, 401 
 
 
 class Logout(Resource):
     @jwt_required()
     def post(self):
-        # Force Flask-RESTful to parse an (empty) JSON payload
-        parser = reqparse.RequestParser()
-        parser.parse_args()
-        _ = request.get_json(force=True, silent=True)
-
         jti = get_jwt()["jti"]
         blacklist.add(jti)
         return {"message": "Logged out successfully"}, 200
@@ -324,7 +359,7 @@ class AddClient(Resource):
                 last_name=data['last_name'],
                 email=data['email'],
                 phone=data['phone'],
-                password_hash=bcrypt.generate_password_hash(random_password).decode('utf-8'),
+                password_hash=hash_password(random_password),
                 status=data.get('status', 'Active'),
                 subscription=subscription,
                 subscription_expiry=subscription_expiry
@@ -359,7 +394,6 @@ class AddClient(Resource):
                 FitFlow Management
                 """
             )
-
             return {
                 "message": "Client added successfully",
                 "client": new_client.to_dict(),
@@ -368,25 +402,6 @@ class AddClient(Resource):
         except Exception as e:
             db.session.rollback()
             return {"error": str(e)}, 500
-
-
-class ResetPassword(Resource):
-    @jwt_required()
-    def post(self):
-        identity = get_jwt_identity()
-        user = Client.query.filter_by(email=identity).first()
-        if not user:
-            return {"error": "User not found"}, 404
-
-        data = request.get_json()
-        new_password = data.get("new_password")
-        if not new_password:
-            return {"error": "New password required"}, 400
-
-        user.password_hash = bcrypt.generate_password_hash(new_password).decode('utf-8')
-        db.session.commit()
-
-        return {"message": "Password updated successfully"}, 200
 
 class AddExpense(Resource):
     @jwt_required()
@@ -403,10 +418,15 @@ class AddExpense(Resource):
         print("Incoming expense data:", data)  # 👈 Debug what React sends
 
         try:
+            cost_str = data.get("cost")
+            if cost_str is None:
+                return {"error": "Cost is required"}, 400
+            cost = int(cost_str)
+
             new_expense = Expense(
                 expense=data.get("expense"),
-                cost=(data.get("cost")),
-            )
+                cost=cost,
+            ) 
 
             db.session.add(new_expense)
             db.session.commit()
@@ -417,74 +437,8 @@ class AddExpense(Resource):
         except Exception as e:
             db.session.rollback()
             print("❌ Error adding expense:", str(e))
-            return {"error": "Failed to add expense"}, 500
+            return {"error": f"Failed to add expense: {str(e)}"}, 500
         
-class ChooseSubscription(Resource):
-    @jwt_required()
-    def post(self):
-        current_user_email = get_jwt_identity()
-        client = Client.query.filter_by(email=current_user_email).first()
-
-        if not client:
-            return {"error": "Client not found"}, 404
-
-        data = request.get_json()
-        subscription_name = data.get("subscription")
-
-        subscription = Subscription.query.filter_by(name=subscription_name).first()
-        if not subscription:
-            return {"error": "Subscription plan not found"}, 404
-
-        # Calculate expiry date
-        expiry_date = datetime.utcnow() + timedelta(days=subscription.duration_days)
-
-        client.subscription = subscription.name
-        client.subscription_expiry = expiry_date
-
-        db.session.commit()
-
-        return {
-            "message": f"Subscribed to {subscription.name} until {expiry_date.date()}",
-            "subscription_expiry": expiry_date.isoformat()
-        }, 200
-
-class UpdateClient(Resource):
-    # Update client details
-    @jwt_required()
-    def put(self):
-        data = request.get_json()
-        current_user_email = get_jwt_identity()
-        client = Client.query.filter_by(email=current_user_email).first()
-
-        if not client:
-            return {"message": "Client not found"}, 404
-
-        # Update only provided fields
-        if "first_name" in data:
-            client.first_name = data["first_name"]
-        if "last_name" in data:
-            client.last_name = data["last_name"]
-        if "email" in data:
-            client.email = data["email"]
-        if "phone" in data:
-            client.phone = data["phone"]
-
-        try:
-            db.session.commit()
-            return {
-                "message": "Client updated successfully",
-                "client": {
-                    "id": client.id,
-                    "first_name": client.first_name,
-                    "last_name":client.last_name,
-                    "email": client.email,
-                    "phone": client.phone
-                }
-            }, 200
-        except Exception as e:
-            db.session.rollback()
-            return {"message": "Error updating client", "error": str(e)}, 500
-
 class Subscriptions(Resource):
     def get(self):
         subs = Subscription.query.all()
@@ -501,28 +455,21 @@ class MarkCashPayment(Resource):
                 return {"error": "Unauthorized, admin access required"}, 403
 
             data = request.get_json() 
-            phone = data.get("phone")
+            client_email = data.get("email")
             subscription_name = data.get("subscription")
             payment_status = (data.get("payment_status") or "").lower()
             amount_paid = data.get("amount")
             payment_date_str = data.get("payment_date")  # YYYY-MM-DD
 
-            if not phone or not subscription_name or not payment_status:
+            if not client_email or not subscription_name or not payment_status:
                 return {
-                    "error": "Missing required fields (phone, subscription, payment_status)"
+                    "error": "Missing required fields (email, subscription, payment_status)"
                 }, 400
 
-
-            client = Client.query.filter_by(phone=phone).first()
+            # Find client by email
+            client = Client.query.filter_by(email=client_email).first()
             if not client:
-                return {"error": f"Client with phone {phone} not found"}, 404
-
-            subscription = Subscription.query.filter_by(name=subscription_name).first()
-            if not subscription:
-                return {"error": f"Subscription plan '{subscription_name}' not found"}, 404
-
-            if payment_status not in ["success", "pending", "failed"]:
-                return {"error": "payment_status must be one of: success, pending, failed"}, 400
+                return {"error": f"Client with email '{client_email}' not found"}, 404
 
             # Resolve effective payment date
             effective_date = datetime.utcnow()
@@ -532,39 +479,54 @@ class MarkCashPayment(Resource):
                 except ValueError:
                     return {"error": "Invalid payment_date format. Use YYYY-MM-DD"}, 400
 
-            # Default amount = plan price if not provided
-            amount_to_record = float(amount_paid) if amount_paid not in [None, ""] else float(subscription.price)
+            # Construct initial response payload for both cases
+            response_payload = {
+                "client": f"{client.first_name} {client.last_name}",
+            }
 
+            # --- Regular Subscription Payment Logic ---
+            subscription = Subscription.query.filter_by(name=subscription_name).first()
+            if not subscription:
+                return {"error": f"Subscription plan '{subscription_name}' not found"}, 404
+
+            # Enforce full payment
+            amount_to_record = float(subscription.price)
+            if amount_paid and float(amount_paid) != amount_to_record:
+                return {"error": f"Payment must be the full subscription amount of KES {amount_to_record:.2f}."}, 400
+
+            # Only successful payments update subscriptions
+            is_successful = payment_status == "success"
+            
             payment = Payment(
                 client_id = client.id,
                 subscription_id = subscription.id,
                 amount = amount_to_record,
-                phone_number = phone,
-                status=payment_status.capitalize(),                
-                method = "Cash"
+                phone_number = client.phone,
+                status="Success" if is_successful else "Failed",
+                method = "Cash",
             )
-
             db.session.add(payment)
 
-            response_payload = {
+            response_payload.update({
                 "client": f"{client.first_name} {client.last_name}",
                 "subscription": subscription.name,
                 "amount": amount_to_record,
-                "payment_status": payment_status,
+                "payment_status": "Success" if is_successful else "Failed",
                 "payment_date": effective_date.strftime("%Y-%m-%d")
-            }
-            if payment_status == "success":
-                # Determine base date to extend from
+            })
+
+            if is_successful:
                 today = effective_date.date()
                 current_expiry = client.subscription_expiry.date() if client.subscription_expiry else None
 
+                # Extend from today or current expiry, whichever is later
                 if current_expiry and current_expiry >= today:
                     base_dt = client.subscription_expiry
                 else:
                     base_dt = datetime.combine(today, datetime.min.time())
 
                 new_expiry = base_dt + timedelta(days=subscription.duration_days)
-
+                
                 # Update client
                 client.subscription = subscription
                 client.subscription_expiry = new_expiry
@@ -574,18 +536,21 @@ class MarkCashPayment(Resource):
 
                 response_payload.update({
                     "new_expiry": new_expiry.strftime("%Y-%m-%d"),
-                    "client_status": client.status
+                    "client_status": client.status,
+                    "note": "Payment fully settled and subscription updated."
                 })
 
                 try:
                     send_email(
                         to_email=client.email,
                         subject="Payment Received & Subscription Updated",
-                        message=(f"Hi {client.first_name},\n\n"
-                                f"We have recorded your payment of KES {amount_to_record:.2f} "
-                                f"for the {subscription.name} plan.\n\n"
-                                f"Your new subscription expiry date is {new_expiry.strftime('%Y-%m-%d')}.\n\n"
-                                f"Thank you!\nFitFlow Gym")
+                        message=f"""Hi {client.first_name},
+
+We have recorded your payment of KES {amount_to_record:.2f} for the {subscription.name} plan.
+Your new subscription expiry date is {new_expiry.strftime('%d-%m-%Y')}.
+
+Thank you!
+FitFlow Gym"""
                     )
                 except Exception as email_err:
                     current_app.logger.error(f"Email failed: {email_err}")
@@ -602,7 +567,6 @@ class MarkCashPayment(Resource):
             current_app.logger.error(f"Error in MarkCashPayment: {e}")
             return {"error": "An error occurred while processing payment"}, 500
 
-    
 class SelectSubscription(Resource):
     @jwt_required()
     def post(self):
@@ -633,26 +597,37 @@ class SelectSubscription(Resource):
 
 
 class AddAdmin(Resource):
+    @jwt_required()
     def post(self):
+        # Ensure the user making the request is an existing admin
+        current_user_email = get_jwt_identity()
+        if not Admin.query.filter_by(email=current_user_email).first():
+            return {"message": "Only existing admins can create new admins."}, 403
+
         data = request.get_json()
         email = data.get("email")
         password = data.get("password")
         name = data.get("name")
+        secret_code = data.get("secret_code")
 
-        if not all([email, password, name]):
-            return{"error": "All fields are required"}, 400
-        
+        # It's better to load secrets from environment variables
+        required_secret = os.environ.get("ADMIN_CREATION_SECRET", "SUPER_SECRET")
+
+        if not all([email, password, name, secret_code]):
+            return {"error": "All fields, including the secret code, are required"}, 400
+
+        if secret_code != required_secret:
+            return {"message": "Invalid secret code."}, 403
+
         existing = Admin.query.filter_by(email=email).first()
-
         if existing:
-            return{"error": "Admin already exists."}
-        
-        hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
+            return {"error": "Admin with this email already exists."}, 409
 
+        hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
         new = Admin(
-            email = email,
-            name = name,
-            password_hash = hashed_password
+            email=email,
+            name=name,
+            password_hash=hashed_password
         )
 
         db.session.add(new)
@@ -660,6 +635,23 @@ class AddAdmin(Resource):
 
         return {"message": "Admin successfully created"}, 201
     
+
+class CreateAdmin(Resource):
+    def post(self):
+        # This is a simplified, non-protected endpoint for the first admin.
+        # Consider removing or protecting this after the first admin is created.
+        if Admin.query.count() > 0:
+            return {"message": "Initial admin already created. Use the protected endpoint."}, 403
+
+        data = request.get_json()
+        if not data.get("email") or not data.get("password") or not data.get("name"):
+            return {"error": "Email, password, and name are required"}, 400
+
+        hashed_password = bcrypt.generate_password_hash(data["password"]).decode('utf-8')
+        new_admin = Admin(email=data["email"], name=data["name"], password_hash=hashed_password)
+        db.session.add(new_admin)
+        db.session.commit()
+        return {"message": "Initial admin created successfully"}, 201
 class GetClients(Resource):
     @jwt_required()
     def get(self):
@@ -705,7 +697,7 @@ class GetClients(Resource):
                     "subscription": c.subscription.name if c.subscription else None,  # Fixed
                     "subscription_id": c.subscription.id if c.subscription else None,  # Added if needed
                     "subscription_expiry": c.subscription_expiry.isoformat() if c.subscription_expiry else None,
-                    "created_at": c.created_at.isoformat() if c.created_at else None  # Added for completeness
+                "created_at": c.created_at.isoformat() if c.created_at else None,  # Added for completeness
                 } for c in clients]
             }, 200
 
@@ -811,7 +803,7 @@ class GetAllExpenses(Resource):
             
         except Exception as e:
             current_app.logger.error(f"Error fetching expenses: {str(e)}")
-            return {"error": "Failed to fetch expenses"}, 
+            return {"error": "Failed to fetch expenses"}, 500
 
 
 class GetPayments(Resource):
@@ -831,13 +823,12 @@ class MpesaInitiate(Resource):
     def post(self):
         data = request.json
         plan_name = data.get("plan_name")  
-        phone = data.get("phone_number")
-        user_email = data.get("email")
+        phone = data.get("phone_number") 
+        user_email = get_jwt_identity()
 
         # Validate input
         if not plan_name or not phone:
             return {"error": "Plan name and phone number required"}, 400
-
         if phone.startswith("0"):
             phone = "254" + phone[1:]
         elif phone.startswith("+254"):
@@ -864,7 +855,7 @@ class MpesaInitiate(Resource):
             status="Pending",
             method="M-PESA",
             phone_number=phone,
-            checkout_request_id=response["CheckoutRequestID"],
+            checkout_response=response["CheckoutRequestID"],
 
         )
         db.session.add(payment)
@@ -929,91 +920,82 @@ class DashBoard(Resource):
 
         return jsonify(stats)
 
-# class AddMpesaPayment(Resource):
-#     def post(self):
-#         data = request.get_json()
-#         body = data["Body"]["stkCallback"]
+class AddMpesaPayment(Resource):
+    def post(self):
+        data = request.get_json()
+        current_app.logger.info(f"M-PESA Callback received: {data}")
+        
+        body = data.get("Body", {}).get("stkCallback", {})
+        checkout_id = body.get("CheckoutRequestID")
+        result_code = body.get("ResultCode")
 
-#         checkout_id = body["CheckoutRequestID"]
-#         result_code = body["ResultCode"]
-#         result_desc = body["ResultDesc"]
+        payment = Payment.query.filter_by(checkout_response=checkout_id).first()
+        if not payment:
+            current_app.logger.error(f"Payment with CheckoutID {checkout_id} not found.")
+            return {"error": "Payment record not found"}, 404
 
-#         if result_code != 0:
-#             return {"message": "Payment failed"}, 400
-#         else:
-#             payment = Payment.query.filter_by(checkout_response=checkout_id).first()
-#             callback_metadata = body["CallbackMetadata"]["Item"]
+        if result_code != 0:
+            payment.status = "Failed"
+            db.session.commit()
+            current_app.logger.warning(f"Payment {checkout_id} failed with code {result_code}.")
+            return {"message": "Payment failed"}, 400
+        
+        # Payment was successful, process metadata
+        callback_metadata = body.get("CallbackMetadata", {}).get("Item", [])
  
+        receipt, amount_paid, phone = None, None, None
+        for item in callback_metadata:
+            if item["Name"] == "MpesaReceiptNumber":
+                receipt = item["Value"]
+            elif item["Name"] == "Amount":
+                amount_paid = item["Value"]
+            elif item["Name"] == "PhoneNumber":
+                phone = item["Value"]
 
+        # Mark payment as successful
+        payment.mpesa_receipt = receipt
+        payment.status = "Success"
+        db.session.commit()
 
-#         # Extract Mpesa callback details
-#         items = callback_metadata["Item"]
-#         receipt, amount_paid, phone = None, None, None
+        # Update client subscription
+        client = payment.client
+        plan = payment.subscription
 
-#         for i in items:
-#             if i["Name"] == "MpesaReceiptNumber":
-#                 receipt = i["Value"]
-#             elif i["Name"] == "Amount":
-#                 amount_paid = i["Value"]
-#             elif i["Name"] == "PhoneNumber":
-#                 phone = i["Value"]
+        today = datetime.utcnow()
+        if not client.subscription_expiry or client.subscription_expiry < today:
+            # New or expired subscription
+            client.subscription_id = plan.id
+            client.subscription_expiry = today + timedelta(days=plan.duration_days)
+            client.status = "Active"
+        else:
+            # Renewal: extend from current expiry date
+            client.subscription_expiry += timedelta(days=plan.duration_days)
 
+        # Track payment history on client
+        client.last_payment_date = today
+        client.last_payment_amount = amount_paid
+        db.session.commit()
 
+        # Send email receipt
+        try:
+            send_email(
+                to_email=client.email,
+                subject="Subscription Payment Successful",
+                message=f"""
+Hi {client.first_name},
 
-#         client = Client.query.filter_by(email=user_email).first()
-#         if not client:
-#             return {"error": "Client not found"}, 404
+Your payment of {amount_paid} KES via M-PESA was successful.
+Mpesa Receipt: {receipt}
 
-#         # Find most recent pending payment for this user
-#         payment = (
-#             Payment.query.filter_by(client_id=client.id, status="Pending")
-#             .order_by(Payment.created_at.desc())
-#             .first()
-#         )
-#         if not payment:
-#             return {"error": "Pending payment not found"}, 404
+Your {plan.name} subscription is now valid until {client.subscription_expiry.date()}.
 
-#         # Mark payment as successful
-#         payment.mpesa_receipt = receipt
-#         payment.status = "Success"
-#         payment.phone_number = phone
-#         db.session.commit()
+Thank you for staying with us!
+"""
+            )
+        except Exception as e:
+            current_app.logger.error(f"Failed to send payment confirmation email: {e}")
 
-#         # Update client subscription
-#         plan = Subscription.query.get(payment.subscription_id)
-
-#         today = datetime.utcnow()
-#         if not client.subscription_expiry or client.subscription_expiry < today:
-#             # New subscription
-#             client.subscription_id = plan.id
-#             client.subscription_expiry = today + timedelta(days=plan.duration_days)
-#             client.status = "active"
-#         else:
-#             # Renewal → extend expiry
-#             client.subscription_expiry += timedelta(days=plan.duration_days)
-
-#         # Track payment history on client
-#         client.last_payment_date = today
-#         client.last_payment_amount = amount_paid
-#         db.session.commit()
-
-#         # Send email receipt
-#         send_email(
-#             to=client.email,
-#             subject="Subscription Payment Successful",
-#             body=f"""
-#             Hi {client.first_name},
-
-#             Your payment of {amount_paid} KES via M-PESA was successful.
-#             Mpesa Receipt: {receipt}
-
-#             Your {plan.name} subscription is now valid until {client.subscription_expiry.date()}.
-
-#             Thank you for staying with us!
-#             """
-#         )
-
-#         return {"message": "Payment processed and subscription updated"}, 200
+        return {"message": "Payment processed and subscription updated"}, 200
 
 class AdminUpdate(Resource):
     @jwt_required()
@@ -1100,19 +1082,34 @@ class ResetPasswordConfirm(Resource):
 
         return {"message": "Password reset successful! You can now log in with your new password."}, 200
 
+class AdminDetails(Resource):
+    @jwt_required()
+    def get(self):
+        """
+        Fetches the details for the currently authenticated admin.
+        """
+        current_user_email = get_jwt_identity()
+        admin = Admin.query.filter_by(email=current_user_email).first()
+
+        if not admin:
+            return {"message": "Admin not found"}, 404
+        
+        return {"admin": admin.to_dict()}, 200
+
 api.add_resource(ForgotPassword, "/forgot-password")
 api.add_resource(ResetPasswordConfirm, "/reset-password")
 api.add_resource(AdminUpdate, "/admin/update")
-api.add_resource(MpesaInitiate, '/start/payment')
+api.add_resource(MpesaInitiate, '/start/payment') 
+api.add_resource(AddMpesaPayment, '/callback')
 # api.add_resource(AddMpesaPayment, '/callback')
+api.add_resource(CreateAdmin, '/admin/create') # Non-protected for first admin
 api.add_resource(ClientDashboard, '/dashboard/client')
 api.add_resource(ClientLogin, '/client/login')
 api.add_resource(AdminLogin, '/admin/login')
-api.add_resource(AddAdmin, '/add/admin')
+api.add_resource(AddAdmin, '/add/admin') # Protected endpoint for adding more admins
 api.add_resource(Logout, '/logout')
 api.add_resource(AddClient, '/addClient')
 api.add_resource(AddExpense,'/addExpense' )
-api.add_resource(ChooseSubscription, '/chooseSubscription')
 api.add_resource(MarkCashPayment, '/markCashPayment')
 api.add_resource(SelectSubscription, '/selectSubscription')
 api.add_resource(GetClients, '/clients')
@@ -1120,10 +1117,9 @@ api.add_resource(GetExpense, '/getExpense')
 api.add_resource(GetAllExpenses, '/expenses')
 api.add_resource(Subscriptions, '/subscriptions')
 api.add_resource(ClientResource, "/clients/<int:client_id>")
-api.add_resource(UpdateClient, "/update")
 api.add_resource(GetPayments, "/client/payments")
-api.add_resource(DashBoard, "/dashboard")
-api.add_resource(ResetPassword, "/reset/password")
+api.add_resource(DashBoard, "/dashboard") 
+api.add_resource(AdminDetails, "/admin/details")
 
 
 

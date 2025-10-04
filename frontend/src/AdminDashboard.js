@@ -24,7 +24,7 @@ function AdminDashboard() {
 
   // Fetch main dashboard stats
 useEffect(() => {
-  const token = localStorage.getItem("token"); // or sessionStorage if that’s where you store it
+  const token = localStorage.getItem("access_token"); // or sessionStorage if that’s where you store it
   fetch("http://127.0.0.1:5000/dashboard", {
     headers: {
       "Content-Type": "application/json",

@@ -22,6 +22,7 @@ class Client(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_payment_date = db.Column(db.DateTime)
     last_payment_amount = db.Column(db.Float)
+    account_balance = db.Column(db.Float, nullable=False, default=0)
         
     
     subscription_id = db.Column(db.Integer, db.ForeignKey('subscriptions.id'))
@@ -40,6 +41,7 @@ class Client(db.Model):
             "subscription": self.subscription.name if self.subscription else None,
             "subscription_expiry": self.subscription_expiry.isoformat() if self.subscription_expiry else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+            "account_balance": self.account_balance
         }
 
     def __repr__(self):
@@ -69,7 +71,7 @@ class Payment(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     client_id = db.Column(db.Integer, db.ForeignKey("clients.id"), nullable=False)
-    subscription_id = db.Column(db.Integer, db.ForeignKey("subscriptions.id"), nullable=False)
+    subscription_id = db.Column(db.Integer, db.ForeignKey("subscriptions.id"), nullable=True)
 
     amount = db.Column(db.Float, nullable=False)
     mpesa_receipt = db.Column(db.String(120), unique=True, nullable=True)
@@ -132,5 +134,3 @@ class Expense(db.Model):
 
     def __repr__(self):
         return f"<Expense {self.expense} - {self.cost}>"
-
-

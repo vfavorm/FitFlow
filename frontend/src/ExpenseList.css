@@ -1,0 +1,130 @@
+/* Main container to center the card, similar to Auth.css */
+.expenses-page-container {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start; /* Align to top for long content */
+  padding: 2rem 1rem;
+  background: linear-gradient(rgba(0, 0, 0, 0.65), rgba(0, 0, 0, 0.65)),
+    url("https://images.unsplash.com/photo-1558611848-73f7eb4001a1") no-repeat
+      center center/cover;
+  font-family: "Poppins", sans-serif;
+}
+
+/* A card for the expenses data table */
+.expenses-card {
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-radius: 18px;
+  padding: 2rem;
+  box-shadow: 0 10px 35px rgba(0, 0, 0, 0.5);
+  width: 100%;
+  max-width: 900px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  animation: fadeIn 0.8s ease-in-out;
+  color: #eee;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* Header section with title and filters */
+.expenses-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.expenses-header h2 {
+  color: var(--primary-color);
+  font-size: 1.8rem;
+  margin: 0;
+}
+
+/* Filters container */
+.filters {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.filters .input-field {
+  min-width: 150px;
+}
+
+/* Summary section */
+.summary {
+  display: flex;
+  justify-content: space-around;
+  background-color: rgba(0, 0, 0, 0.2);
+  padding: 1rem;
+  border-radius: 8px;
+  text-align: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.summary p {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.summary strong {
+  color: var(--primary-color);
+  font-size: 1.1rem;
+}
+
+/* Make table scrollable on small screens */
+.expenses-table-container {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.expenses-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 600px; /* Prevent content from squishing on smaller screens */
+  text-align: left;
+}
+
+.expenses-table th,
+.expenses-table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  vertical-align: middle;
+}
+
+.expenses-table th {
+  color: var(--primary-color);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.expenses-table tbody tr:nth-child(even) {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+.expenses-table tbody tr:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Right-align the numeric 'Cost' column */
+.expenses-table th:nth-child(2),
+.expenses-table td:nth-child(2) {
+  text-align: right;
+}
+
+.no-expenses {
+  text-align: center;
+  padding: 2rem;
+  font-style: italic;
+  color: #aaa;
+}

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
-import "./App.css";
+import "./ExpenseList.css"; // Import the new stylesheet
 
 function ExpenseList() {
   const [expenses, setExpenses] = useState([]);
@@ -17,8 +17,9 @@ function ExpenseList() {
 useEffect(() => {
   const fetchExpenses = async () => {
     setLoading(true);
+    setMessage("");
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("access_token"); // Corrected token key
       const params = {};
       if (filters.month) params.month = filters.month;
       if (filters.year) params.year = filters.year;
@@ -32,7 +33,6 @@ useEffect(() => {
 
       setExpenses(res.data.expenses);
       setTotal(res.data.total);
-      setMessage("");
     } catch (err) {
       if (err.response?.status === 401) {
         setMessage("Login first to access expenses.");
@@ -78,53 +78,55 @@ useEffect(() => {
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 5 }, (_, i) => currentYear - i);
 
-  return (
-    <div className="container">
-      <h2>Expense Report</h2>
-      
-      <div className="filters">
-        <select 
-          name="month" 
-          value={filters.month}
-          onChange={handleFilterChange}
-          className="input-field"
-        >
-          {months.map(m => (
-            <option key={m.value} value={m.value}>{m.label}</option>
-          ))}
-        </select>
-        
-        <select
-          name="year"
-          value={filters.year}
-          onChange={handleFilterChange}
-          className="input-field"
-        >
-          {years.map(year => (
-            <option key={year} value={year}>{year}</option>
-          ))}
-        </select>
-        
-      <button className="btn btn-secondary" onClick={() => navigate("/dashboard/admin")}>
-        Back to Dashboard
-      </button>
-      </div>
+  if (loading) return <div className="loading">Loading expenses...</div>;
 
-      {message && <p className="message-error">{message}</p>}
-      
-      {loading ? (
-        <p>Loading expenses...</p>
-      ) : (
-        <>
-          <div className="summary">
-            <p>Total Expenses: <strong>KES {total.toLocaleString()}</strong></p>
-            <p>Number of Expenses: <strong>{expenses.length}</strong></p>
-            {filters.month && (
-              <p>Month: <strong>{months.find(m => m.value === filters.month)?.label} {filters.year}</strong></p>
-            )}
+  return (
+    <div className="expenses-page-container">
+      <div className="expenses-card">
+        <div className="expenses-header">
+          <h2>Expense Report</h2>
+          <div className="filters">
+            <select
+              name="month"
+              value={filters.month}
+              onChange={handleFilterChange}
+              className="input-field"
+            >
+              {months.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+
+            <select
+              name="year"
+              value={filters.year}
+              onChange={handleFilterChange}
+              className="input-field"
+            >
+              {years.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+
+            <button className="btn btn-secondary" onClick={() => navigate("/dashboard/admin")}>
+              Back to Dashboard
+            </button>
           </div>
-          
-          <table className="expense-table">
+        </div>
+
+        {message && <p className="message-error">{message}</p>}
+
+        <div className="summary">
+          <p>Total Expenses: <strong>KES {total.toLocaleString()}</strong></p>
+          <p>Number of Expenses: <strong>{expenses.length}</strong></p>
+        </div>
+
+        <div className="expenses-table-container">
+          <table className="expenses-table">
             <thead>
               <tr>
                 <th>Description</th>
@@ -133,7 +135,7 @@ useEffect(() => {
               </tr>
             </thead>
             <tbody>
-              {expenses.length > 0 ? (
+              {expenses && expenses.length > 0 ? (
                 expenses.map((exp) => (
                   <tr key={exp.id}>
                     <td>{exp.expense}</td>
@@ -143,13 +145,15 @@ useEffect(() => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan="5">No expenses found</td>
+                  <td colSpan="3" className="no-expenses">
+                    No expenses found for the selected period.
+                  </td>
                 </tr>
               )}
             </tbody>
           </table>
-        </>
-      )}
+        </div>
+      </div>
     </div>
   );
 }
