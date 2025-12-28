@@ -82,6 +82,8 @@ class Payment(db.Model):
     checkout_response =db.Column(db.String(100), nullable=True)
 
     client = db.relationship("Client", backref="payments")
+    # A payment can be associated with one invoice
+    invoice = db.relationship("Invoice", backref="payment", uselist=False)
     subscription = db.relationship("Subscription")
 
     def to_dict(self):
@@ -134,3 +136,47 @@ class Expense(db.Model):
 
     def __repr__(self):
         return f"<Expense {self.expense} - {self.cost}>"
+
+class Invoice(db.Model):
+    __tablename__ = "invoices"
+
+    id = db.Column(db.Integer, primary_key=True)
+    client_id = db.Column(db.Integer, db.ForeignKey("clients.id"), nullable=False)
+    invoice_number = db.Column(db.String(50), unique=True, nullable=False)
+    issue_date = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    due_date = db.Column(db.DateTime, nullable=False)
+    total_amount = db.Column(db.Float, nullable=False)
+    status = db.Column(db.String(20), default="draft", nullable=False) # draft, sent, paid, overdue, cancelled
+
+    client = db.relationship("Client", backref=db.backref("invoices", lazy=True))
+    items = db.relationship("InvoiceItem", backref="invoice", cascade="all, delete-orphan")
+    payment_id = db.Column(db.Integer, db.ForeignKey("payments.id"), nullable=True)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "client_id": self.client_id,
+            "invoice_number": self.invoice_number,
+            "issue_date": self.issue_date.isoformat(),
+            "due_date": self.due_date.isoformat(),
+            "total_amount": self.total_amount,
+            "status": self.status,
+            "items": [item.to_dict() for item in self.items]
+        }
+
+class InvoiceItem(db.Model):
+    __tablename__ = "invoice_items"
+
+    id = db.Column(db.Integer, primary_key=True)
+    invoice_id = db.Column(db.Integer, db.ForeignKey("invoices.id"), nullable=False)
+    description = db.Column(db.String(255), nullable=False)
+    quantity = db.Column(db.Integer, default=1, nullable=False)
+    unit_price = db.Column(db.Float, nullable=False)
+
+    def to_dict(self):
+        return {
+            "description": self.description,
+            "quantity": self.quantity,
+            "unit_price": self.unit_price,
+            "total": self.quantity * self.unit_price
+        }

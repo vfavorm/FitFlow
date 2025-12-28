@@ -7,17 +7,19 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt, get_jwt_identity
 from dotenv import load_dotenv
 from config import Config
-from auth import bcrypt, check_password, hash_password
-from models import db,Client, Admin, Expense, Subscription, Payment
+from auth import bcrypt, check_password, hash_password 
+from models import db,Client, Admin, Expense, Subscription, Payment, Invoice, InvoiceItem
 from datetime import datetime, timedelta
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
 import os
 from flask_apscheduler import APScheduler
 from mpesa import lipa_na_mpesa
 import secrets
 import string
+from fpdf import FPDF
 
 
 load_dotenv()
@@ -41,7 +43,7 @@ def check_if_token_revoked(jwt_header, jwt_payload):
     jti = jwt_payload["jti"]
     return jti in blacklist
 
-def send_email(to_email, subject, message):
+def send_email(to_email, subject, message, pdf_data=None, pdf_filename="invoice.pdf "):
     """
     Simple plaintext email sender (Gmail SMTP).
     Expects MAIL_USERNAME and MAIL_PASSWORD in env.
@@ -61,6 +63,18 @@ def send_email(to_email, subject, message):
     msg["Subject"] = subject
     msg.attach(MIMEText(message, "plain"))
 
+    if pdf_data:
+            try:
+                # Create the PDF attachment part
+                pdf_part = MIMEApplication(pdf_data, Name=pdf_filename)
+                pdf_part['Content-Disposition'] = f'attachment; filename="{pdf_filename}"'
+                msg.attach(pdf_part)
+                current_app.logger.info(f"Successfully attached PDF: {pdf_filename}")
+            except Exception as e:
+                current_app.logger.error(f"Failed to attach PDF: {e}")
+                return False # Fail if PDF attachment fails
+        # --- End of new part ---
+
     try:
         server = smtplib.SMTP(smtp_server, smtp_port)
         server.starttls()
@@ -71,6 +85,74 @@ def send_email(to_email, subject, message):
     except Exception as e:
         current_app.logger.error(f"Email failed: {e}")
         return False
+
+
+def create_invoice_pdf(invoice):
+    """Generates a PDF for a given invoice object and returns it as bytes."""
+    client = invoice.client
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Header
+    pdf.set_font("Arial", 'B', 20)
+    pdf.cell(0, 10, "FitFlow Gym Invoice", 0, 1, 'C')
+    pdf.ln(5)
+    pdf.set_font("Arial", '', 12)
+    pdf.cell(0, 7, "www.fitflow.com", 0, 1, 'C')
+    pdf.cell(0, 7, "+254 700 000 000", 0, 1, 'C')
+    pdf.ln(10)
+
+    # Invoice Info
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(95, 8, "Bill To:", 0, 0, 'L')
+    pdf.cell(95, 8, "Invoice Details:", 0, 1, 'R')
+    
+    pdf.set_font("Arial", '', 12)
+    pdf.cell(95, 7, f"{client.first_name} {client.last_name}", 0, 0, 'L')
+    pdf.cell(95, 7, f"Invoice #: {invoice.invoice_number}", 0, 1, 'R')
+    
+    pdf.cell(95, 7, f"{client.email}", 0, 0, 'L')
+    pdf.cell(95, 7, f"Issue Date: {invoice.issue_date.strftime('%Y-%m-%d')}", 0, 1, 'R')
+    
+    pdf.cell(95, 7, f"{client.phone}", 0, 0, 'L')
+    pdf.cell(95, 7, f"Due Date: {invoice.due_date.strftime('%Y-%m-%d')}", 0, 1, 'R')
+    pdf.ln(10)
+
+    # Table Header
+    pdf.set_fill_color(220, 220, 220)
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(100, 10, 'Description', 1, 0, 'C', True)
+    pdf.cell(30, 10, 'Quantity', 1, 0, 'C', True)
+    pdf.cell(30, 10, 'Unit Price', 1, 0, 'C', True)
+    pdf.cell(30, 10, 'Total', 1, 1, 'C', True)
+
+    # Table Body (Invoice Items)
+    pdf.set_font("Arial", '', 12)
+    for item in invoice.items:
+        pdf.cell(100, 10, item.description, 1, 0, 'L')
+        pdf.cell(30, 10, str(item.quantity), 1, 0, 'R')
+        pdf.cell(30, 10, f"{item.unit_price:.2f}", 1, 0, 'R')
+        pdf.cell(30, 10, f"{(item.quantity * item.unit_price):.2f}", 1, 1, 'R')
+    
+    pdf.ln(5)
+
+    # Total
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(160, 10, 'Total Amount:', 0, 0, 'R')
+    pdf.cell(30, 10, f"KES {invoice.total_amount:.2f}", 1, 1, 'R')
+    pdf.ln(10)
+    
+    # Status
+    pdf.set_font("Arial", 'B', 16)
+    status_text = f"Status: {invoice.status.upper()}"
+    if invoice.status == 'paid':
+         pdf.set_text_color(0, 128, 0) # Green
+    elif invoice.status in ['sent', 'overdue']:
+         pdf.set_text_color(255, 0, 0) # Red
+    pdf.cell(0, 10, status_text, 0, 1, 'C')
+    
+    # Return PDF as bytes
+    return pdf.output(dest='S').encode('latin-1')
 
 def generate_password(length=10):
     chars = string.ascii_letters + string.digits + "!@#$%^&*"
@@ -88,14 +170,66 @@ scheduler.start()
 def check_expired_subscriptions():
     with app.app_context():
         today = datetime.utcnow().date()
-        expired_clients = Client.query.filter(Client.subscription_expiry <= today).all()
+        
+        # Find clients whose expiry date is today or in the past AND who are still marked Active
+        expired_clients = Client.query.filter(
+            Client.subscription_expiry <= today, 
+            Client.status == 'Active'
+        ).all()
+
+        if not expired_clients:
+            current_app.logger.info("Scheduler: No active clients expired today.")
+            return # No one to process
 
         for client in expired_clients:
+            # Set client status to Inactive
+            client.status = 'Inactive' 
+            db.session.add(client)
+            
+            # Find the 'sent' invoice that is now overdue
+            overdue_invoice = Invoice.query.filter(
+                Invoice.client_id == client.id,
+                Invoice.status == 'sent', # Find the invoice that was 'sent'
+                db.func.date(Invoice.due_date) <= today
+            ).order_by(Invoice.due_date.desc()).first()
+
+            email_message = f"Hi {client.first_name}, your subscription has expired. Your account is now inactive. Please renew to continue accessing the gym."
+            pdf_to_send = None
+            pdf_filename = None
+            subject = "Subscription Expired"
+
+            if overdue_invoice:
+                overdue_invoice.status = 'overdue' # Update status
+                db.session.add(overdue_invoice)
+                
+                try:
+                    pdf_to_send = create_invoice_pdf(overdue_invoice)
+                    pdf_filename = f"Invoice_OVERDUE_{overdue_invoice.invoice_number}.pdf"
+                    subject = "Subscription Expired - Invoice Overdue"
+                    email_message = f"""
+Hi {client.first_name},
+
+Your subscription has expired, and your account is now inactive.
+Your renewal invoice ({overdue_invoice.invoice_number}) is attached and is now considered overdue.
+
+Please log in to your dashboard to make a payment and reactivate your account.
+
+Regards,
+FitFlow Gym
+"""
+                except Exception as e:
+                    current_app.logger.error(f"Failed to generate overdue PDF for {client.id}: {e}")
+
             send_email(
                 client.email,
-                "Subscription Expired",
-                f"Hi {client.first_name}, your subscription has expired. Please renew to continue accessing the gym."
+                subject,
+                email_message,
+                pdf_data=pdf_to_send,
+                pdf_filename=pdf_filename
             )
+            current_app.logger.info(f"Processed expiry for client {client.id}. Status set to Inactive.")
+        
+        db.session.commit() # Commit all status changes and invoice updates
 
 @scheduler.task('cron', id='send_monthly_report', day=1, hour=6)  # every 1st of the month at 6 AM
 def send_monthly_report():
@@ -149,6 +283,99 @@ Here is your monthly financial report:
 Regards,
 FitFlow Gym Management System                """
             )
+
+def generate_invoice_number():
+    """Generates a unique invoice number."""
+    timestamp = datetime.utcnow().strftime('%Y%m%d%H%M%S')
+    random_part = secrets.token_hex(2).upper()
+    return f"INV-{timestamp}-{random_part}"
+
+
+@scheduler.task('cron', id='generate_renewal_invoices', hour=8) # Runs daily at 8 AM
+def generate_renewal_invoices():
+    """
+    Generates invoices for clients whose subscriptions are expiring soon
+    and emails the invoice to them.
+    An invoice is created 7 days before the subscription expiry date.
+    """
+    with app.app_context():
+        # Calculate the target date for expiry (7 days from now)
+        renewal_date = (datetime.utcnow() + timedelta(days=7)).date()
+
+        # Find clients whose subscription expires on the renewal_date
+        clients_for_renewal = Client.query.filter(
+            db.func.date(Client.subscription_expiry) == renewal_date,
+            Client.subscription_id.isnot(None)
+        ).all()
+
+        for client in clients_for_renewal:
+            # Check if an unpaid invoice for this renewal already exists
+            existing_invoice = Invoice.query.filter(
+                Invoice.client_id == client.id,
+                Invoice.status.in_(['sent', 'overdue']),
+                db.func.date(Invoice.due_date) == client.subscription_expiry.date()
+            ).first()
+
+            if existing_invoice:
+                current_app.logger.info(f"Invoice already exists for client {client.id}. Skipping.")
+                continue
+
+            subscription = client.subscription
+            
+            # This check is good practice, though 'subscription_id.isnot(None)'
+            # in the query above should already handle it.
+            if not subscription:
+                current_app.logger.warning(f"Client {client.id} has subscription_id but no subscription object. Skipping.")
+                continue
+                
+            invoice = Invoice(
+                client_id=client.id,
+                invoice_number=generate_invoice_number(),
+                issue_date=datetime.utcnow(),
+                due_date=client.subscription_expiry,
+                total_amount=subscription.price,
+                status='sent'
+            )
+            
+            invoice_item = InvoiceItem(
+                invoice=invoice,
+                description=f"{subscription.name} Subscription Renewal",
+                quantity=1,
+                unit_price=subscription.price
+            )
+
+            db.session.add(invoice)
+            db.session.add(invoice_item)
+            db.session.commit()
+
+            # --- Send email notification with PDF invoice ---
+            try:
+                pdf_data = create_invoice_pdf(invoice)
+                
+                send_email(
+                    to_email=client.email,
+                    subject=f"Subscription Renewal Invoice - {invoice.invoice_number}",
+                    message=f"""
+Hi {client.first_name},
+
+Your subscription for "{subscription.name}" is due for renewal soon.
+Your subscription expires on: {client.subscription_expiry.strftime('%Y-%m-%d')}
+
+Attached is your renewal invoice ({invoice.invoice_number}) for KES {invoice.total_amount:.2f}.
+
+You can pay via M-PESA from your client dashboard.
+
+Regards,
+FitFlow Gym
+""",
+                    pdf_data=pdf_data,
+                    pdf_filename=f"Invoice_{invoice.invoice_number}.pdf"
+                )
+                current_app.logger.info(f"Generated and EMAILED invoice {invoice.invoice_number} to {client.email}")
+            
+            except Exception as e:
+                current_app.logger.error(f"Failed to generate or send invoice PDF for client {client.id}: {e}")
+
 
 class ClientResource(Resource):
     @jwt_required()
@@ -534,31 +761,56 @@ class MarkCashPayment(Resource):
                 client.last_payment_date = effective_date
                 client.last_payment_amount = amount_to_record
 
+                # Create a "Paid" invoice (receipt)
+                paid_invoice = Invoice(
+                    client_id=client.id,
+                    invoice_number=generate_invoice_number(),
+                    issue_date=effective_date, # Use the admin-provided date
+                    due_date=effective_date,   # Paid immediately
+                    total_amount=amount_to_record,
+                    status='paid'
+                )
+                paid_item = InvoiceItem(
+                    invoice=paid_invoice,
+                    description=f"{subscription.name} Subscription",
+                    quantity=1,
+                    unit_price=subscription.price
+                )
+                db.session.add(paid_invoice)
+                db.session.add(paid_item)
+                # --- End PDF Generation ---
+
                 response_payload.update({
                     "new_expiry": new_expiry.strftime("%Y-%m-%d"),
                     "client_status": client.status,
-                    "note": "Payment fully settled and subscription updated."
+                    "note": f"Payment settled. Receipt {paid_invoice.invoice_number} generated."
                 })
 
                 try:
+                    pdf_data = create_invoice_pdf(paid_invoice)
                     send_email(
                         to_email=client.email,
-                        subject="Payment Received & Subscription Updated",
+                        subject=f"Payment Receipt - Invoice {paid_invoice.invoice_number}",
                         message=f"""Hi {client.first_name},
 
-We have recorded your payment of KES {amount_to_record:.2f} for the {subscription.name} plan.
+We have recorded your cash payment of KES {amount_to_record:.2f} for the {subscription.name} plan.
 Your new subscription expiry date is {new_expiry.strftime('%d-%m-%Y')}.
 
+Your payment receipt is attached.
+
 Thank you!
-FitFlow Gym"""
+FitFlow Gym""",
+                        pdf_data=pdf_data,
+                        pdf_filename=f"Receipt_{paid_invoice.invoice_number}.pdf"
                     )
                 except Exception as email_err:
-                    current_app.logger.error(f"Email failed: {email_err}")
+                    current_app.logger.error(f"Cash payment email failed: {email_err}")
 
             else:
                 response_payload.update({
                     "note": "Payment recorded without subscription update."
                 })
+            
             db.session.commit()
             return {"message": "Payment processed", **response_payload}, 200
 
@@ -566,7 +818,7 @@ FitFlow Gym"""
             db.session.rollback()
             current_app.logger.error(f"Error in MarkCashPayment: {e}")
             return {"error": "An error occurred while processing payment"}, 500
-
+        
 class SelectSubscription(Resource):
     @jwt_required()
     def post(self):
@@ -638,8 +890,6 @@ class AddAdmin(Resource):
 
 class CreateAdmin(Resource):
     def post(self):
-        # This is a simplified, non-protected endpoint for the first admin.
-        # Consider removing or protecting this after the first admin is created.
         if Admin.query.count() > 0:
             return {"message": "Initial admin already created. Use the protected endpoint."}, 403
 
@@ -652,6 +902,8 @@ class CreateAdmin(Resource):
         db.session.add(new_admin)
         db.session.commit()
         return {"message": "Initial admin created successfully"}, 201
+    
+    
 class GetClients(Resource):
     @jwt_required()
     def get(self):
@@ -821,47 +1073,52 @@ class GetPayments(Resource):
 class MpesaInitiate(Resource):
     @jwt_required()
     def post(self):
-        data = request.json
-        plan_name = data.get("plan_name")  
-        phone = data.get("phone_number") 
-        user_email = get_jwt_identity()
+        data = request.get_json()
 
-        # Validate input
-        if not plan_name or not phone:
-            return {"error": "Plan name and phone number required"}, 400
-        if phone.startswith("0"):
-            phone = "254" + phone[1:]
-        elif phone.startswith("+254"):
-            phone = phone[1:]
+        phone_number = data.get("phone_number")
+        plan_name = data.get("plan_name")
 
-        # Find subscription plan
+        if not phone_number or not plan_name:
+            return {"error": "phone_number and plan_name are required"}, 400
+
+        # Get user making request
+        email = get_jwt_identity()
+        user = Client.query.filter_by(email=email).first()
+
+        if not user:
+            return {"error": "User not found"}, 404
+
+        # Get subscription plan
         plan = Subscription.query.filter_by(name=plan_name).first()
+
         if not plan:
-            return {"error": "Invalid subscription plan"}, 400
+            return {"error": "Subscription plan not found"}, 404
 
-        # Initiate Mpesa STK push
-        response = lipa_na_mpesa(phone, plan.price)
-        print("DEBUG: STK push response:", response)
+        # Initiate STK Push
+        response = lipa_na_mpesa(phone_number, plan.price)
 
-        client = Client.query.filter_by(email=user_email).first()
-        if not client:
-            return {"error": "Client not found"}, 404
-        
-        # Save pending payment
+        # Safely extract required values
+        response_code = response.get("ResponseCode")
+        checkout_id = response.get("CheckoutRequestID")
+
+        if response_code != "0" or checkout_id is None:
+            return {"error": "Failed to initiate M-PESA STK Push"}, 400
+
         payment = Payment(
-            client_id=client.id,
+            client_id=user.id,
             subscription_id=plan.id,
             amount=plan.price,
             status="Pending",
-            method="M-PESA",
-            phone_number=phone,
-            checkout_response=response["CheckoutRequestID"],
-
+            checkout_response=checkout_id   
         )
+
         db.session.add(payment)
         db.session.commit()
 
-        return {"message": "STK push sent. Check your phone.", "response": response}
+        return {
+            "message": "STK Push sent. Check your phone to complete the payment.",
+            "checkout_id": checkout_id
+        }, 200
 
 class DashBoard(Resource):
     def get(self):
@@ -942,25 +1199,29 @@ class AddMpesaPayment(Resource):
         
         # Payment was successful, process metadata
         callback_metadata = body.get("CallbackMetadata", {}).get("Item", [])
- 
-        receipt, amount_paid, phone = None, None, None
+    
+        receipt, amount_paid_str, phone = None, None, None
         for item in callback_metadata:
             if item["Name"] == "MpesaReceiptNumber":
                 receipt = item["Value"]
             elif item["Name"] == "Amount":
-                amount_paid = item["Value"]
+                amount_paid_str = item["Value"] # Use a temp string variable
             elif item["Name"] == "PhoneNumber":
                 phone = item["Value"]
+
+        # Convert amount_paid_str to float
+        amount_paid = float(amount_paid_str) if amount_paid_str else payment.amount
 
         # Mark payment as successful
         payment.mpesa_receipt = receipt
         payment.status = "Success"
-        db.session.commit()
+        payment.amount = amount_paid
+        payment.phone_number = phone # Save the phone number
 
         # Update client subscription
         client = payment.client
-        plan = payment.subscription
-
+        plan = payment.subscription # 'plan' is the correct variable here
+        
         today = datetime.utcnow()
         if not client.subscription_expiry or client.subscription_expiry < today:
             # New or expired subscription
@@ -974,23 +1235,47 @@ class AddMpesaPayment(Resource):
         # Track payment history on client
         client.last_payment_date = today
         client.last_payment_amount = amount_paid
+        
+        # Create a "Paid" invoice (receipt)
+        paid_invoice = Invoice(
+            client_id=client.id,
+            invoice_number=generate_invoice_number(),
+            issue_date=today,
+            due_date=today, # Paid immediately
+            total_amount=amount_paid, # Use 'amount_paid'
+            status='paid' 
+        )
+        paid_item = InvoiceItem(
+            invoice=paid_invoice,
+            description=f"{plan.name} Subscription Renewal", # Use 'plan'
+            quantity=1,
+            unit_price=amount_paid # Use 'amount_paid'
+        )
+        db.session.add(paid_invoice)
+        db.session.add(paid_item)
+        
+        # Commit everything in one transaction
         db.session.commit()
 
-        # Send email receipt
+        # Send email receipt with PDF
         try:
+            pdf_data = create_invoice_pdf(paid_invoice)
             send_email(
                 to_email=client.email,
-                subject="Subscription Payment Successful",
-                message=f"""
-Hi {client.first_name},
+                subject=f"Payment Receipt - Invoice {paid_invoice.invoice_number}",
+                message=f"""Hi {client.first_name},
 
-Your payment of {amount_paid} KES via M-PESA was successful.
+Your M-PESA payment of KES {amount_paid:.2f} for the {plan.name} plan was successful.
 Mpesa Receipt: {receipt}
 
-Your {plan.name} subscription is now valid until {client.subscription_expiry.date()}.
+Your new subscription expiry date is {client.subscription_expiry.strftime('%d-%m-%Y')}.
 
-Thank you for staying with us!
-"""
+Your payment receipt is attached.
+
+Thank you!
+FitFlow Gym""", # Corrected message for M-PESA
+                pdf_data=pdf_data,
+                pdf_filename=f"Receipt_{paid_invoice.invoice_number}.pdf"
             )
         except Exception as e:
             current_app.logger.error(f"Failed to send payment confirmation email: {e}")
@@ -1096,13 +1381,34 @@ class AdminDetails(Resource):
         
         return {"admin": admin.to_dict()}, 200
 
+class InvoiceList(Resource):
+    @jwt_required()
+    def get(self):
+        """
+        Fetches invoices for the currently authenticated client.
+        """
+        current_user_email = get_jwt_identity()
+        client = Client.query.filter_by(email=current_user_email).first()
+
+        if not client:
+            return {"error": "Client not found"}, 404
+
+        invoices = Invoice.query.filter_by(client_id=client.id).order_by(Invoice.issue_date.desc()).all()
+        
+        return {
+            "invoices": [
+                invoice.to_dict() for invoice in invoices
+            ]
+        }, 200
+
+
+
 api.add_resource(ForgotPassword, "/forgot-password")
 api.add_resource(ResetPasswordConfirm, "/reset-password")
 api.add_resource(AdminUpdate, "/admin/update")
 api.add_resource(MpesaInitiate, '/start/payment') 
 api.add_resource(AddMpesaPayment, '/callback')
-# api.add_resource(AddMpesaPayment, '/callback')
-api.add_resource(CreateAdmin, '/admin/create') # Non-protected for first admin
+api.add_resource(CreateAdmin, '/admin/create') 
 api.add_resource(ClientDashboard, '/dashboard/client')
 api.add_resource(ClientLogin, '/client/login')
 api.add_resource(AdminLogin, '/admin/login')
@@ -1120,6 +1426,7 @@ api.add_resource(ClientResource, "/clients/<int:client_id>")
 api.add_resource(GetPayments, "/client/payments")
 api.add_resource(DashBoard, "/dashboard") 
 api.add_resource(AdminDetails, "/admin/details")
+api.add_resource(InvoiceList, "/client/invoices")
 
 
 

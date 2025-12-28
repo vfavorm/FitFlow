@@ -1,0 +1,44 @@
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Backend (Python / Flask)
+# =========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Database files
+*.db
+*.sqlite3
+instance/
+
+# IDE configuration
+.vscode/
+.idea/
+
+# Frontend (React / Node)
+# =========================
+frontend/node_modules/
+frontend/build/
+frontend/coverage/
+frontend/.pnp
+frontend/.pnp.js
+
+# Logs and debug files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# OS-generated files
+.DS_Store
+.DS_Store?
+Thumbs.db

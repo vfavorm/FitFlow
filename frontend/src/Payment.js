@@ -59,7 +59,9 @@ const MpesaPayment = () => {
           plan_name: selectedPlan,
           phone_number: phone,
         },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: {
+          "Content-Type": "application/json", 
+           Authorization: `Bearer ${token}` } }
       );
 
       setMessage(res.data.message || "STK push sent. Check your phone.");

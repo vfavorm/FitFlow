@@ -23,9 +23,17 @@ def generate_access_token():
     return json_response["access_token"]
 
 def lipa_na_mpesa(phone_number, amount, account_reference="FitFlow Subscription", description="Subscription Payment"):
-    token = generate_access_token() 
-    timestamp = datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")
-    password = base64.b64encode((BUSINESS_SHORT_CODE + PASSKEY + timestamp).encode("utf-8")).decode("utf-8")
+    # Normalize phone number to 254 format
+    phone_number = str(phone_number).replace(" ", "")
+    if phone_number.startswith("0"):
+        phone_number = "254" + phone_number[1:]
+    elif phone_number.startswith("+"):
+        phone_number = phone_number[1:]
+
+    token = generate_access_token()
+    timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+    raw_password = BUSINESS_SHORT_CODE + PASSKEY + timestamp
+    password = base64.b64encode(raw_password.encode()).decode()
 
     payload = {
         "BusinessShortCode": BUSINESS_SHORT_CODE,
@@ -33,14 +41,25 @@ def lipa_na_mpesa(phone_number, amount, account_reference="FitFlow Subscription"
         "Timestamp": timestamp,
         "TransactionType": "CustomerPayBillOnline",
         "Amount": int(amount),
-        "PartyA": phone_number,   
+        "PartyA": phone_number,
         "PartyB": BUSINESS_SHORT_CODE,
         "PhoneNumber": phone_number,
         "CallBackURL": CALLBACK_URL,
         "AccountReference": account_reference,
-        "TransactionDesc": description,
+        "TransactionDesc": description
     }
 
-    headers = {"Authorization": f"Bearer {token}"}
-    response = requests.post(f"{BASE_URL}/mpesa/stkpush/v1/processrequest", json=payload, headers=headers)
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+
+    response = requests.post(
+        f"{BASE_URL}/mpesa/stkpush/v1/processrequest",
+        json=payload,
+        headers=headers,
+        timeout=30
+    )
+
+    print("STK Response:", response.json())   # <---- DEBUG OUTPUT
     return response.json()
