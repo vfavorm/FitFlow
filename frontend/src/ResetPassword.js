@@ -67,8 +67,14 @@ function ResetPassword() {
       <div className="auth-card">
         <h2>Set a New Password</h2>
         <form onSubmit={handleSubmit}>
-          <input type="password" placeholder="New Password" value={password} onChange={(e) => setPassword(e.target.value)} className="input-field" required />
-          <input type="password" placeholder="Confirm New Password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="input-field" required />
+          <div className="form-group">
+            <label htmlFor="new-password">New Password</label>
+            <input id="new-password" type="password" placeholder="Enter your new password" value={password} onChange={(e) => setPassword(e.target.value)} className="input-field" required />
+          </div>
+          <div className="form-group">
+            <label htmlFor="confirm-password">Confirm New Password</label>
+            <input id="confirm-password" type="password" placeholder="Confirm your new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="input-field" required />
+          </div>
           <button type="submit" className="btn btn-primary" disabled={loading || !token}>
             {loading ? "Resetting..." : "Reset Password"}
           </button>
