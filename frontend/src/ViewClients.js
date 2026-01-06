@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import './ClientsList.css';
 import { FaSave, FaTimes, FaEdit, FaTrash } from 'react-icons/fa'; // Import icons
+import Loader from './Loader';
 
 const ClientsList = () => {
   const [clients, setClients] = useState([]);
@@ -134,7 +135,7 @@ const ClientsList = () => {
   const currentClients = clients.slice(indexOfFirstClient, indexOfLastClient);
   const totalPages = Math.ceil(clients.length / clientsPerPage);
 
-  if (loading) return <div className="loading">Loading clients...</div>;
+  if (loading) return <Loader message="Loading clients..." />;
   if (error) return <div className="error">{error}</div>;
 
   return (

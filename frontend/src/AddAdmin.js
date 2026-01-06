@@ -76,10 +76,10 @@ function AddAdmin() {
         <button
           type="button"
           className="btn btn-secondary"
-          onClick={() => navigate("/dashboard/admin")}
+          onClick={() => navigate("/admin/login")}
           style={{ marginTop: '1rem' }}
         >
-          Back to Dashboard
+          Back to Login
         </button>
       </div>
     </div>

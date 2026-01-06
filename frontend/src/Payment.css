@@ -32,3 +32,49 @@
   /* Inherit from .btn, .btn-primary in shared.css */
   width: 100px;
 }
+
+/* Fix for dropdown menu styling: ensures dark background and readable text */
+select.input-field option {
+  background-color: #2c2c2c;
+  color: #fff;
+  max-width: 100%; /* Helps constrain width on some browsers */
+}
+
+/* Responsive adjustments for the M-PESA payment card */
+.mpesa-card {
+  transition: all 0.3s ease-in-out;
+}
+
+@media screen and (max-width: 768px) {
+  .mpesa-card {
+    padding: 2rem;
+    max-width: 90%;
+  }
+}
+
+@media screen and (max-width: 480px) {
+  .mpesa-card {
+    padding: 1.5rem 1rem;
+    width: 100%;
+    margin: 0;
+  }
+
+  .mpesa-card h2 {
+    font-size: 1.3rem;
+    margin-bottom: 1rem;
+    word-wrap: break-word;
+  }
+
+  .mpesa-card .input-field {
+    font-size: 16px; /* Prevents zoom on iOS inputs */
+    padding: 12px;
+  }
+
+  select.input-field {
+    font-size: 16px;
+    padding: 12px;
+    width: 100%;
+  }
+
+ 
+}

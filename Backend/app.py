@@ -234,37 +234,82 @@ FitFlow Gym
 @scheduler.task('cron', id='send_monthly_report', day=1, hour=6)  # every 1st of the month at 6 AM
 def send_monthly_report():
     with app.app_context():
-        # This job runs on the 1st of the month, so we report on the *previous* month.
+        # Determine previous month
         today = datetime.utcnow()
-        first_day_of_current_month = today.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        last_day_of_previous_month = first_day_of_current_month - timedelta(days=1)
-        
-        month = last_day_of_previous_month.month
-        year = last_day_of_previous_month.year
+        first_day_current_month = today.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        last_day_prev_month = first_day_current_month - timedelta(days=1)
+        month = last_day_prev_month.month
+        year = last_day_prev_month.year
+        month_name = last_day_prev_month.strftime('%B %Y')
 
-        # Total expenses for the previous month
-        monthly_expenses = db.session.query(
-            db.func.sum(Expense.cost)
-        ).filter(
-            extract('month', Expense.created_at) == month,
-            extract('year', Expense.created_at) == year
-        ).scalar() or 0
-        
-        # Total earnings from successful payments for the previous month
-        total_earnings = db.session.query(
-            db.func.sum(Payment.amount)
-        ).filter(
-            Payment.status == 'Success',  # Only count successful payments
+        # Fetch successful payments for previous month
+        payments = Payment.query.filter(
+            Payment.status == 'Success',
             extract('month', Payment.created_at) == month,
             extract('year', Payment.created_at) == year
-        ).scalar() or 0
-        
-        # Calculate net profit/loss
-        net_profit = total_earnings - monthly_expenses
+        ).all()
 
-        # Email all admins
+        # Fetch expenses for previous month
+        expenses = Expense.query.filter(
+            extract('month', Expense.created_at) == month,
+            extract('year', Expense.created_at) == year
+        ).all()
+
+        # Totals
+        total_earnings = sum(p.amount for p in payments)
+        total_expenses = sum(e.cost for e in expenses)
+        net_revenue = total_earnings - total_expenses
+
+        # Generate PDF report
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", 'B', 16)
+        pdf.cell(0, 10, f"Monthly Financial Report - {month_name}", ln=True, align="C")
+        pdf.ln(5)
+
+        # Payments Section
+        pdf.set_font("Arial", 'B', 14)
+        pdf.cell(0, 10, "Payments (Successful Only)", ln=True)
+        pdf.set_font("Arial", '', 12)
+        if payments:
+            pdf.cell(50, 8, "Date", border=1)
+            pdf.cell(50, 8, "Client", border=1)
+            pdf.cell(50, 8, "Amount", border=1, ln=True)
+            for p in payments:
+                client_name = f"{p.client.first_name} {p.client.last_name}" if p.client else "Unknown"
+                pdf.cell(50, 8, p.created_at.strftime('%d-%b-%Y'), border=1)
+                pdf.cell(50, 8, client_name, border=1)
+                pdf.cell(50, 8, f"KES {p.amount:.2f}", border=1, ln=True)
+        else:
+            pdf.cell(0, 8, "No successful payments recorded.", ln=True)
+        pdf.ln(5)
+
+        # Expenses Section
+        pdf.set_font("Arial", 'B', 14)
+        pdf.cell(0, 10, "Expenses", ln=True)
+        pdf.set_font("Arial", '', 12)
+        if expenses:
+            pdf.cell(50, 8, "Date", border=1)
+            pdf.cell(80, 8, "Description", border=1)
+            pdf.cell(40, 8, "Cost", border=1, ln=True)
+            for e in expenses:
+                pdf.cell(50, 8, e.created_at.strftime('%d-%b-%Y'), border=1)
+                pdf.cell(80, 8, e.description, border=1)
+                pdf.cell(40, 8, f"KES {e.cost:.2f}", border=1, ln=True)
+        else:
+            pdf.cell(0, 8, "No expenses recorded.", ln=True)
+        pdf.ln(10)
+
+        # Summary
+        pdf.set_font("Arial", 'B', 14)
+        pdf.cell(0, 8, f"Total Earnings: KES {total_earnings:.2f}", ln=True)
+        pdf.cell(0, 8, f"Total Expenses: KES {total_expenses:.2f}", ln=True)
+        pdf.cell(0, 8, f"Net Revenue: KES {net_revenue:.2f}", ln=True)
+
+        pdf_bytes = pdf.output(dest='S').encode('latin-1')
+
+        # Send email to all admins with PDF attached
         admins = Admin.query.all()
-        month_name = last_day_of_previous_month.strftime('%B %Y')
         for admin in admins:
             send_email(
                 to_email=admin.email,
@@ -272,17 +317,21 @@ def send_monthly_report():
                 message=f"""
 Hello {admin.name},
 
-Here is your monthly financial report:
+Attached is the financial report for {month_name}.
 
-📅 Month: {month_name}
-💰 Total Earnings: KES {total_earnings:.2f}
-💸 Total Expenses: KES {monthly_expenses:.2f}
------------------------------
-📈 Net Profit/Loss: KES {net_profit:.2f}
+Summary:
+Total Earnings (Successful payments only): KES {total_earnings:.2f}
+Total Expenses: KES {total_expenses:.2f}
+Net Revenue: KES {net_revenue:.2f}
 
 Regards,
-FitFlow Gym Management System                """
+FitFlow Gym Management System
+""",
+                pdf_data=pdf_bytes,
+                pdf_filename=f"Financial_Report_{month_name.replace(' ', '_')}.pdf"
             )
+            current_app.logger.info(f"Sent monthly financial report to {admin.email}")
+
 
 def generate_invoice_number():
     """Generates a unique invoice number."""
@@ -510,9 +559,10 @@ class AdminLogin(Resource):
         user = Admin.query.filter_by(email=email).first()
         if user and check_password(password, user.password_hash):
             token = create_access_token(
-                identity=user.email,
-                expires_delta=timedelta(days=7)  # Extend expiry to 7 days
-            )            
+                identity=user.email,  
+                # additional_claims={"role": "admin"},
+                expires_delta=timedelta(days=7)
+            )         
             return {
                 "message": "Login successful",
                 "access_token": token,
@@ -674,31 +724,38 @@ class Subscriptions(Resource):
 class MarkCashPayment(Resource):
     @jwt_required()
     def post(self):
-
         try:
+            # --- Authenticate admin ---
             current_user = get_jwt_identity()
             admin = Admin.query.filter_by(email=current_user).first()
             if not admin:
                 return {"error": "Unauthorized, admin access required"}, 403
 
-            data = request.get_json() 
+            # --- Get data from request ---
+            data = request.get_json()
+            if not data:
+                return {"error": "No JSON data provided"}, 400
+                
+            current_app.logger.info(f"Received payment data: {data}")
+            
             client_email = data.get("email")
             subscription_name = data.get("subscription")
-            payment_status = (data.get("payment_status") or "").lower()
-            amount_paid = data.get("amount")
-            payment_date_str = data.get("payment_date")  # YYYY-MM-DD
+            payment_date_str = data.get("payment_date") 
 
-            if not client_email or not subscription_name or not payment_status:
-                return {
-                    "error": "Missing required fields (email, subscription, payment_status)"
-                }, 400
+            if not client_email or not subscription_name:
+                return {"error": "Missing required fields (email, subscription)"}, 400
 
-            # Find client by email
+            # --- Find client ---
             client = Client.query.filter_by(email=client_email).first()
             if not client:
                 return {"error": f"Client with email '{client_email}' not found"}, 404
 
-            # Resolve effective payment date
+            # --- Find subscription ---
+            subscription = Subscription.query.filter_by(name=subscription_name).first()
+            if not subscription:
+                return {"error": f"Subscription plan '{subscription_name}' not found"}, 404
+
+            # --- Resolve effective payment date ---
             effective_date = datetime.utcnow()
             if payment_date_str:
                 try:
@@ -706,92 +763,97 @@ class MarkCashPayment(Resource):
                 except ValueError:
                     return {"error": "Invalid payment_date format. Use YYYY-MM-DD"}, 400
 
-            # Construct initial response payload for both cases
-            response_payload = {
-                "client": f"{client.first_name} {client.last_name}",
-            }
-
-            # --- Regular Subscription Payment Logic ---
-            subscription = Subscription.query.filter_by(name=subscription_name).first()
-            if not subscription:
-                return {"error": f"Subscription plan '{subscription_name}' not found"}, 404
-
-            # Enforce full payment
+            # --- Calculate new expiry date ---
             amount_to_record = float(subscription.price)
-            if amount_paid and float(amount_paid) != amount_to_record:
-                return {"error": f"Payment must be the full subscription amount of KES {amount_to_record:.2f}."}, 400
-
-            # Only successful payments update subscriptions
-            is_successful = payment_status == "success"
+            today = effective_date.date()
             
+            current_app.logger.info(f"Processing payment for client {client_email}, subscription {subscription_name}")
+            current_app.logger.info(f"Current client expiry: {client.subscription_expiry}, Today: {today}")
+            
+            # Check if client has an active subscription
+            if client.subscription_expiry:
+                current_expiry = client.subscription_expiry.date()
+                current_app.logger.info(f"Current expiry date: {current_expiry}")
+                
+                # If current expiry is in the future, extend from there
+                if current_expiry >= today:
+                    base_dt = client.subscription_expiry
+                    current_app.logger.info(f"Extending from current expiry: {base_dt}")
+                else:
+                    # Subscription expired, start fresh from today
+                    base_dt = datetime.combine(today, datetime.min.time())
+                    current_app.logger.info(f"Subscription expired, starting fresh from: {base_dt}")
+            else:
+                # No existing subscription, start fresh
+                base_dt = datetime.combine(today, datetime.min.time())
+                current_app.logger.info(f"No existing subscription, starting from: {base_dt}")
+            
+            # Calculate new expiry
+            new_expiry = base_dt + timedelta(days=subscription.duration_days)
+            current_app.logger.info(f"New expiry date: {new_expiry}")
+
+            # --- Record payment ---
             payment = Payment(
-                client_id = client.id,
-                subscription_id = subscription.id,
-                amount = amount_to_record,
-                phone_number = client.phone,
-                status="Success" if is_successful else "Failed",
-                method = "Cash",
+                client_id=client.id,
+                subscription_id=subscription.id,
+                amount=amount_to_record,
+                phone_number=client.phone,
+                status="Success",
+                method="Cash",
+                created_at=effective_date
             )
             db.session.add(payment)
+            db.session.flush()  # Get payment ID for invoice
+            current_app.logger.info(f"Payment recorded with ID: {payment.id}")
 
-            response_payload.update({
-                "client": f"{client.first_name} {client.last_name}",
-                "subscription": subscription.name,
-                "amount": amount_to_record,
-                "payment_status": "Success" if is_successful else "Failed",
-                "payment_date": effective_date.strftime("%Y-%m-%d")
-            })
+            # --- Update client subscription ---
+            client.subscription_id = subscription.id
+            client.subscription_expiry = new_expiry
+            client.status = "Active"
+            client.last_payment_date = effective_date
+            client.last_payment_amount = amount_to_record
+            
+            current_app.logger.info(f"Client subscription updated: {client.subscription_id}, Expiry: {client.subscription_expiry}")
 
-            if is_successful:
-                today = effective_date.date()
-                current_expiry = client.subscription_expiry.date() if client.subscription_expiry else None
+            # --- Generate invoice number ---
+            try:
+                invoice_number = generate_invoice_number()
+                current_app.logger.info(f"Generated invoice number: {invoice_number}")
+            except Exception as inv_err:
+                current_app.logger.error(f"Error generating invoice number: {inv_err}")
+                invoice_number = f"INV-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
 
-                # Extend from today or current expiry, whichever is later
-                if current_expiry and current_expiry >= today:
-                    base_dt = client.subscription_expiry
-                else:
-                    base_dt = datetime.combine(today, datetime.min.time())
+            # --- Create invoice ---
+            paid_invoice = Invoice(
+                client_id=client.id,
+                invoice_number=invoice_number,
+                issue_date=effective_date,
+                due_date=effective_date,
+                total_amount=amount_to_record,
+                status="paid",
+                payment_id=payment.id
+            )
+            db.session.add(paid_invoice)
+            db.session.flush()
+            current_app.logger.info(f"Invoice created with ID: {paid_invoice.id}")
 
-                new_expiry = base_dt + timedelta(days=subscription.duration_days)
-                
-                # Update client
-                client.subscription = subscription
-                client.subscription_expiry = new_expiry
-                client.status = "Active"
-                client.last_payment_date = effective_date
-                client.last_payment_amount = amount_to_record
+            # --- Create invoice item ---
+            paid_item = InvoiceItem(
+                invoice_id=paid_invoice.id,
+                description=f"{subscription.name} Subscription ({subscription.duration_days} days)",
+                quantity=1,
+                unit_price=subscription.price
+            )
+            db.session.add(paid_item)
+            current_app.logger.info(f"Invoice item created")
 
-                # Create a "Paid" invoice (receipt)
-                paid_invoice = Invoice(
-                    client_id=client.id,
-                    invoice_number=generate_invoice_number(),
-                    issue_date=effective_date, # Use the admin-provided date
-                    due_date=effective_date,   # Paid immediately
-                    total_amount=amount_to_record,
-                    status='paid'
-                )
-                paid_item = InvoiceItem(
-                    invoice=paid_invoice,
-                    description=f"{subscription.name} Subscription",
-                    quantity=1,
-                    unit_price=subscription.price
-                )
-                db.session.add(paid_invoice)
-                db.session.add(paid_item)
-                # --- End PDF Generation ---
-
-                response_payload.update({
-                    "new_expiry": new_expiry.strftime("%Y-%m-%d"),
-                    "client_status": client.status,
-                    "note": f"Payment settled. Receipt {paid_invoice.invoice_number} generated."
-                })
-
-                try:
-                    pdf_data = create_invoice_pdf(paid_invoice)
-                    send_email(
-                        to_email=client.email,
-                        subject=f"Payment Receipt - Invoice {paid_invoice.invoice_number}",
-                        message=f"""Hi {client.first_name},
+            # --- Send email with PDF (non-blocking) ---
+            try:
+                pdf_data = create_invoice_pdf(paid_invoice)
+                send_email(
+                    to_email=client.email,
+                    subject=f"Payment Receipt - Invoice {paid_invoice.invoice_number}",
+                    message=f"""Hi {client.first_name},
 
 We have recorded your cash payment of KES {amount_to_record:.2f} for the {subscription.name} plan.
 Your new subscription expiry date is {new_expiry.strftime('%d-%m-%Y')}.
@@ -800,24 +862,37 @@ Your payment receipt is attached.
 
 Thank you!
 FitFlow Gym""",
-                        pdf_data=pdf_data,
-                        pdf_filename=f"Receipt_{paid_invoice.invoice_number}.pdf"
-                    )
-                except Exception as email_err:
-                    current_app.logger.error(f"Cash payment email failed: {email_err}")
+                    pdf_data=pdf_data,
+                    pdf_filename=f"Receipt_{paid_invoice.invoice_number}.pdf"
+                )
+                current_app.logger.info(f"Email sent to {client.email}")
+            except Exception as email_err:
+                current_app.logger.error(f"Cash payment email failed: {email_err}")
+                # Don't fail the whole transaction if email fails
 
-            else:
-                response_payload.update({
-                    "note": "Payment recorded without subscription update."
-                })
-            
+            # --- Commit transaction ---
             db.session.commit()
+            current_app.logger.info("Transaction committed successfully")
+
+            # --- Construct response ---
+            response_payload = {
+                "client": f"{client.first_name} {client.last_name}",
+                "subscription": subscription.name,
+                "amount": amount_to_record,
+                "payment_status": "Success",
+                "payment_date": effective_date.strftime("%Y-%m-%d"),
+                "new_expiry": new_expiry.strftime("%Y-%m-%d"),
+                "client_status": client.status,
+                "invoice_number": paid_invoice.invoice_number,
+                "note": f"Payment settled. Receipt {paid_invoice.invoice_number} generated."
+            }
+
             return {"message": "Payment processed", **response_payload}, 200
 
         except Exception as e:
             db.session.rollback()
-            current_app.logger.error(f"Error in MarkCashPayment: {e}")
-            return {"error": "An error occurred while processing payment"}, 500
+            current_app.logger.error(f"Error in MarkCashPayment: {str(e)}", exc_info=True)
+            return {"error": f"An error occurred while processing payment: {str(e)}"}, 500
         
 class SelectSubscription(Resource):
     @jwt_required()
@@ -849,13 +924,7 @@ class SelectSubscription(Resource):
 
 
 class AddAdmin(Resource):
-    @jwt_required()
     def post(self):
-        # Ensure the user making the request is an existing admin
-        current_user_email = get_jwt_identity()
-        if not Admin.query.filter_by(email=current_user_email).first():
-            return {"message": "Only existing admins can create new admins."}, 403
-
         data = request.get_json()
         email = data.get("email")
         password = data.get("password")
@@ -1074,7 +1143,6 @@ class MpesaInitiate(Resource):
     @jwt_required()
     def post(self):
         data = request.get_json()
-
         phone_number = data.get("phone_number")
         plan_name = data.get("plan_name")
 
@@ -1084,34 +1152,39 @@ class MpesaInitiate(Resource):
         # Get user making request
         email = get_jwt_identity()
         user = Client.query.filter_by(email=email).first()
-
         if not user:
             return {"error": "User not found"}, 404
 
         # Get subscription plan
         plan = Subscription.query.filter_by(name=plan_name).first()
-
         if not plan:
             return {"error": "Subscription plan not found"}, 404
 
-        # Initiate STK Push
-        response = lipa_na_mpesa(phone_number, plan.price)
+        # Initiate STK Push using mpesa.py
+        try:
+            response = lipa_na_mpesa(phone_number, plan.price)
+        except Exception as e:
+
+            current_app.logger.error(f"STK Push error: {e}")
+            return {"error": "Failed to initiate M-PESA STK Push"}, 500
 
         # Safely extract required values
         response_code = response.get("ResponseCode")
         checkout_id = response.get("CheckoutRequestID")
 
         if response_code != "0" or checkout_id is None:
-            return {"error": "Failed to initiate M-PESA STK Push"}, 400
+            return {"error": "Failed to initiate M-PESA STK Push", "details": response}, 400
 
+        # Record payment as pending
         payment = Payment(
             client_id=user.id,
             subscription_id=plan.id,
             amount=plan.price,
+            phone_number=phone_number,
+            method="M-PESA",
             status="Pending",
-            checkout_response=checkout_id   
+            checkout_response=checkout_id
         )
-
         db.session.add(payment)
         db.session.commit()
 
@@ -1121,15 +1194,26 @@ class MpesaInitiate(Resource):
         }, 200
 
 class DashBoard(Resource):
+    @jwt_required()
     def get(self):
-        now = datetime.now()
+        # Get JWT claims
+        # claims = get_jwt()
+        # if claims.get("role") != "admin":
+        #     return {"error": "Admin access only"}, 403
+
+        # Get current admin email
+        admin_email = get_jwt_identity()
+        admin = Admin.query.filter_by(email=admin_email).first()
+        if not admin:
+            return {"error": "Admin not found"}, 404
+
+        now = datetime.utcnow()
         month = now.month
         year = now.year
 
-        # Total clients
+        # Dashboard counts and sums
         clients_count = Client.query.count()
 
-        # Expenses for current month
         expenses_total = (
             db.session.query(func.sum(Expense.cost))
             .filter(extract("month", Expense.created_at) == month)
@@ -1137,15 +1221,16 @@ class DashBoard(Resource):
             .scalar() or 0
         )
 
-        # Payments for current month
         payments_total = (
             db.session.query(func.sum(Payment.amount))
+            .filter(Payment.status == "Success")
             .filter(extract("month", Payment.created_at) == month)
             .filter(extract("year", Payment.created_at) == year)
             .scalar() or 0
         )
 
-        # Subscriptions with number of clients in each
+
+        # Subscription info
         subscriptions = (
             db.session.query(
                 Subscription.id,
@@ -1154,34 +1239,37 @@ class DashBoard(Resource):
                 func.count(Client.id).label("client_count")
             )
             .outerjoin(Client, Client.subscription_id == Subscription.id)
+            .filter(
+                (Client.created_at != None) &  # Only consider clients with created_at
+                (extract("month", Client.created_at) == month) &
+                (extract("year", Client.created_at) == year)
+            )
             .group_by(Subscription.id)
             .all()
         )
 
-        subscriptions_list = [
-            {
-                "id": sub.id,
-                "name": sub.name,
-                "price": sub.price,
-                "clients": sub.client_count
-            }
-            for sub in subscriptions
-        ]
-
-        stats = {
+        # Build response
+        return {
             "clients": clients_count,
             "expenses": round(expenses_total, 2),
             "payments": round(payments_total, 2),
-            "subscriptions": subscriptions_list,
-        }
+            "subscriptions": [
+                {
+                    "id": s.id,
+                    "name": s.name,
+                    "price": s.price,
+                    "clients": s.client_count
+                }
+                for s in subscriptions
+            ]
+        }, 200
 
-        return jsonify(stats)
 
-class AddMpesaPayment(Resource):
+class AddMpesaPaymentNCallback(Resource):
     def post(self):
         data = request.get_json()
         current_app.logger.info(f"M-PESA Callback received: {data}")
-        
+
         body = data.get("Body", {}).get("stkCallback", {})
         checkout_id = body.get("CheckoutRequestID")
         result_code = body.get("ResultCode")
@@ -1193,120 +1281,120 @@ class AddMpesaPayment(Resource):
 
         if result_code != 0:
             payment.status = "Failed"
+            payment.method = "M-PESA"
+            payment.checkout_response = None
+            payment.mpesa_receipt = None
+            payment.phone_number = None
             db.session.commit()
-            current_app.logger.warning(f"Payment {checkout_id} failed with code {result_code}.")
             return {"message": "Payment failed"}, 400
-        
-        # Payment was successful, process metadata
+
+        # Process CallbackMetadata
         callback_metadata = body.get("CallbackMetadata", {}).get("Item", [])
-    
-        receipt, amount_paid_str, phone = None, None, None
+        receipt, amount_paid, phone = None, None, None
         for item in callback_metadata:
             if item["Name"] == "MpesaReceiptNumber":
                 receipt = item["Value"]
             elif item["Name"] == "Amount":
-                amount_paid_str = item["Value"] # Use a temp string variable
+                amount_paid = float(item["Value"])
             elif item["Name"] == "PhoneNumber":
                 phone = item["Value"]
 
-        # Convert amount_paid_str to float
-        amount_paid = float(amount_paid_str) if amount_paid_str else payment.amount
-
-        # Mark payment as successful
+        # Update payment record
         payment.mpesa_receipt = receipt
         payment.status = "Success"
-        payment.amount = amount_paid
-        payment.phone_number = phone # Save the phone number
+        payment.amount = amount_paid or payment.amount
+        payment.phone_number = phone
 
-        # Update client subscription
+        # Update client's subscription
         client = payment.client
-        plan = payment.subscription # 'plan' is the correct variable here
-        
+        plan = payment.subscription
+
         today = datetime.utcnow()
         if not client.subscription_expiry or client.subscription_expiry < today:
-            # New or expired subscription
-            client.subscription_id = plan.id
             client.subscription_expiry = today + timedelta(days=plan.duration_days)
-            client.status = "Active"
         else:
-            # Renewal: extend from current expiry date
             client.subscription_expiry += timedelta(days=plan.duration_days)
-
-        # Track payment history on client
+        client.subscription_id = plan.id
+        client.status = "Active"
         client.last_payment_date = today
-        client.last_payment_amount = amount_paid
-        
-        # Create a "Paid" invoice (receipt)
-        paid_invoice = Invoice(
+        client.last_payment_amount = payment.amount
+
+        # Create invoice
+        invoice = Invoice(
             client_id=client.id,
             invoice_number=generate_invoice_number(),
             issue_date=today,
-            due_date=today, # Paid immediately
-            total_amount=amount_paid, # Use 'amount_paid'
-            status='paid' 
+            due_date=today,
+            total_amount=payment.amount,
+            status='paid'
         )
-        paid_item = InvoiceItem(
-            invoice=paid_invoice,
-            description=f"{plan.name} Subscription Renewal", # Use 'plan'
+        item = InvoiceItem(
+            invoice=invoice,
+            description=f"{plan.name} Subscription",
             quantity=1,
-            unit_price=amount_paid # Use 'amount_paid'
+            unit_price=payment.amount
         )
-        db.session.add(paid_invoice)
-        db.session.add(paid_item)
-        
-        # Commit everything in one transaction
+        db.session.add(invoice)
+        db.session.add(item)
         db.session.commit()
 
-        # Send email receipt with PDF
         try:
-            pdf_data = create_invoice_pdf(paid_invoice)
+            pdf_data = create_invoice_pdf(invoice)
             send_email(
                 to_email=client.email,
-                subject=f"Payment Receipt - Invoice {paid_invoice.invoice_number}",
-                message=f"""Hi {client.first_name},
-
-Your M-PESA payment of KES {amount_paid:.2f} for the {plan.name} plan was successful.
-Mpesa Receipt: {receipt}
-
-Your new subscription expiry date is {client.subscription_expiry.strftime('%d-%m-%Y')}.
-
-Your payment receipt is attached.
-
-Thank you!
-FitFlow Gym""", # Corrected message for M-PESA
+                subject=f"Payment Receipt - {invoice.invoice_number}",
+                message=f"Hi {client.first_name},\nYour payment of KES {payment.amount:.2f} for {plan.name} was successful.\nMpesa Receipt: {receipt}\nExpiry: {client.subscription_expiry.strftime('%d-%m-%Y')}",
                 pdf_data=pdf_data,
-                pdf_filename=f"Receipt_{paid_invoice.invoice_number}.pdf"
+                pdf_filename=f"Receipt_{invoice.invoice_number}.pdf"
             )
         except Exception as e:
-            current_app.logger.error(f"Failed to send payment confirmation email: {e}")
+            current_app.logger.error(f"Failed to send receipt email: {e}")
 
         return {"message": "Payment processed and subscription updated"}, 200
 
 class AdminUpdate(Resource):
     @jwt_required()
-    def put(self):
+    def patch(self):
         data = request.get_json()
         current_user_email = get_jwt_identity()
 
+        # Fetch admin
         admin = Admin.query.filter_by(email=current_user_email).first()
         if not admin:
             return {"message": "Admin not found"}, 404
 
+        # Update name/email if provided
         if data.get("name"):
             admin.name = data["name"]
 
         if data.get("email"):
+            # Optional: check for unique email before updating
+            existing = Admin.query.filter_by(email=data["email"]).first()
+            if existing and existing.id != admin.id:
+                return {"message": "Email already in use"}, 400
             admin.email = data["email"]
 
+        # Update password if old_password and new_password are provided
         if data.get("old_password") and data.get("new_password"):
-            if not check_password(admin.password_hash, data["old_password"]):
-                return {"message": "Old password is incorrect"}, 400
+            try:
+                if not check_password(admin.password_hash, data["old_password"]):
+                    return {"message": "Old password is incorrect"}, 400
+            except ValueError:
+                # Catch invalid hash
+                return {"message": "Stored password hash is invalid. Please reset password manually."}, 500
 
+            # Set new password
             admin.password_hash = hash_password(data["new_password"])
 
-        db.session.commit()
-        return {"message": "Profile updated successfully", "admin": admin.to_dict()}, 200
-    
+        # Commit changes
+        try:
+            db.session.commit()
+        except Exception as e:
+            current_app.logger.error(f"Error updating admin profile: {e}")
+            db.session.rollback()
+            return {"message": "Failed to update profile"}, 500
+
+        return {"message": "Profile updated successfully", "admin": admin.to_dict()}, 200 
 # ---------------- FORGOT PASSWORD ---------------- #
 
 class ForgotPassword(Resource):
@@ -1407,12 +1495,12 @@ api.add_resource(ForgotPassword, "/forgot-password")
 api.add_resource(ResetPasswordConfirm, "/reset-password")
 api.add_resource(AdminUpdate, "/admin/update")
 api.add_resource(MpesaInitiate, '/start/payment') 
-api.add_resource(AddMpesaPayment, '/callback')
+api.add_resource(AddMpesaPaymentNCallback, '/callback')
 api.add_resource(CreateAdmin, '/admin/create') 
 api.add_resource(ClientDashboard, '/dashboard/client')
 api.add_resource(ClientLogin, '/client/login')
 api.add_resource(AdminLogin, '/admin/login')
-api.add_resource(AddAdmin, '/add/admin') # Protected endpoint for adding more admins
+api.add_resource(AddAdmin, '/add/admin') 
 api.add_resource(Logout, '/logout')
 api.add_resource(AddClient, '/addClient')
 api.add_resource(AddExpense,'/addExpense' )

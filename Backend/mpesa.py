@@ -1,28 +1,34 @@
 import requests
 import base64
 import datetime
-from decouple import config  
-
-# Get credentials from .env
-CONSUMER_KEY = config("MPESA_CONSUMER_KEY")
-CONSUMER_SECRET = config("MPESA_CONSUMER_SECRET")
-BUSINESS_SHORT_CODE = config("MPESA_SHORTCODE")  # e.g., "174379" for test
-PASSKEY = config("MPESA_PASSKEY")
-CALLBACK_URL = config("MPESA_CALLBACK_URL")  # e.g., https://yourdomain/api/mpesa/callback
-
-BASE_URL = "https://sandbox.safaricom.co.ke"  # Use sandbox first
-
-import requests
+from decouple import config
 from requests.auth import HTTPBasicAuth
 
+# --- Load credentials from .env ---
+CONSUMER_KEY = config("MPESA_CONSUMER_KEY")
+CONSUMER_SECRET = config("MPESA_CONSUMER_SECRET")
+BUSINESS_SHORT_CODE = config("MPESA_SHORTCODE")  # e.g., "174379"
+PASSKEY = config("MPESA_PASSKEY")
+CALLBACK_URL = config("MPESA_CALLBACK_URL")  # e.g., ngrok URL
+
+# --- Sandbox URLs ---
+BASE_URL = "https://sandbox.safaricom.co.ke"
+OAUTH_URL = f"{BASE_URL}/oauth/v1/generate?grant_type=client_credentials"
+STK_PUSH_URL = f"{BASE_URL}/mpesa/stkpush/v1/processrequest"
+
+# --- Generate access token ---
 def generate_access_token():
-    url = "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
+    """Get OAuth access token from M-Pesa API."""
+    response = requests.get(OAUTH_URL, auth=HTTPBasicAuth(CONSUMER_KEY, CONSUMER_SECRET), timeout=10)
+    response.raise_for_status()  # Raises exception if request failed
+    return response.json().get("access_token")
 
-    response = requests.get(url, auth=HTTPBasicAuth(CONSUMER_KEY, CONSUMER_SECRET))
-    json_response = response.json()
-    return json_response["access_token"]
 
+# --- Lipa na M-Pesa STK Push ---
 def lipa_na_mpesa(phone_number, amount, account_reference="FitFlow Subscription", description="Subscription Payment"):
+    """
+    Initiates an STK Push to the specified phone number.
+    """
     # Normalize phone number to 254 format
     phone_number = str(phone_number).replace(" ", "")
     if phone_number.startswith("0"):
@@ -54,12 +60,12 @@ def lipa_na_mpesa(phone_number, amount, account_reference="FitFlow Subscription"
         "Content-Type": "application/json"
     }
 
-    response = requests.post(
-        f"{BASE_URL}/mpesa/stkpush/v1/processrequest",
-        json=payload,
-        headers=headers,
-        timeout=30
-    )
+    response = requests.post(STK_PUSH_URL, json=payload, headers=headers, timeout=30)
 
-    print("STK Response:", response.json())   # <---- DEBUG OUTPUT
-    return response.json()
+    try:
+        resp_json = response.json()
+    except ValueError:
+        resp_json = {"error": "Invalid response from M-Pesa", "text": response.text}
+
+    print("STK Response:", resp_json)  # Debug output
+    return resp_json

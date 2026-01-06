@@ -20,6 +20,7 @@ import AdminUpdate from "./UpdateAdmin"; // create this component
 import ForgotPassword from "./ForgotPassword";
 import ResetPassword from "./ResetPassword";
 import NotFound from "./NotFound";
+import Invoices from './Invoices';
 
 
 function App() {
@@ -31,6 +32,9 @@ function App() {
         <Route path="/client/login" element={<ClientLogin />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/admin/create" element={<AddAdmin />} />
+
+
 
         {/* Protected routes */}
         <Route path="/dashboard/admin" element={
@@ -49,6 +53,13 @@ function App() {
             <ClientDashboard />
           </ProtectedRoute>
         } />
+
+        <Route path="/client/invoices" element={
+          <ProtectedRoute redirectTo="/client/login">
+            <Invoices />
+          </ProtectedRoute>
+        } />
+
         <Route path="/addExpense" element={
           <ProtectedRoute redirectTo="/admin/login">
             <AddExpense />
@@ -84,11 +95,7 @@ function App() {
             <PaymentsList />
           </ProtectedRoute>
         } />
-        <Route path="/admin/create" element={
-          <ProtectedRoute redirectTo="/admin/login">
-            <AddAdmin />
-          </ProtectedRoute>
-        } />
+
         <Route path="/admin/update" element={
           <ProtectedRoute redirectTo="/admin/login">
             <AdminUpdate />

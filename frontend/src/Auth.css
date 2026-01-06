@@ -69,6 +69,14 @@
   background-color: rgb(40, 40, 40);
 }
 
+/* Styling for dropdown options (e.g. Client List) to match dark theme */
+select.input-field option {
+  background-color: #2c2c2c;
+  color: #f0f0f0;
+  padding: 10px;
+  max-width: 100%;
+}
+
 .auth-card .btn {
   width: 100%;
 }

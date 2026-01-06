@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import "./Auth.css"; // Use the shared Auth.css for styling
+import Loader from "./Loader";
 
 const ClientUpdate = () => {
   const [client, setClient] = useState(null);
@@ -58,7 +59,7 @@ const ClientUpdate = () => {
     }
   };
 
-  if (isFetching) return <div className="loading">Loading profile...</div>;
+  if (isFetching) return <Loader message="Loading profile..." />;
   if (!client && !isFetching) return <div className="error">{message || "Could not load client profile."}</div>;
 
   return (

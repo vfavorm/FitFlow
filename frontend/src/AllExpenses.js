@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import "./ExpenseList.css"; // Import the new stylesheet
+import Loader from "./Loader";
 
 function ExpenseList() {
   const [expenses, setExpenses] = useState([]);
@@ -78,7 +79,7 @@ useEffect(() => {
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 5 }, (_, i) => currentYear - i);
 
-  if (loading) return <div className="loading">Loading expenses...</div>;
+  if (loading) return <Loader message="Loading expenses..." />;
 
   return (
     <div className="expenses-page-container">

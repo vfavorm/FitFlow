@@ -10,6 +10,7 @@ import {
 } from "react-icons/fa";
 import { FiMoreVertical } from "react-icons/fi"; // three dots icon
 import "./AdminDashboard.css";
+import Loader from "./Loader";
 
 function AdminDashboard() {
   const navigate = useNavigate();
@@ -21,30 +22,33 @@ function AdminDashboard() {
 
   const [subscriptions, setSubscriptions] = useState([]); // store subscription list
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // Fetch main dashboard stats
-useEffect(() => {
-  const token = localStorage.getItem("access_token"); // or sessionStorage if that’s where you store it
-  fetch("http://127.0.0.1:5000/dashboard", {
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`
-    }
-  })
-    .then((res) => {
-      if (!res.ok) throw new Error("Failed to fetch stats");
-      return res.json();
-    })
-    .then((data) => setStats(data))
-    .catch((err) => console.error("Error fetching dashboard stats:", err));
-}, []);
-
-  // Fetch subscriptions list
   useEffect(() => {
-    fetch("http://127.0.0.1:5000/subscriptions")
-      .then((res) => res.json())
-      .then((data) => setSubscriptions(data))
-      .catch((err) => console.error("Error fetching subscriptions:", err));
+    const fetchData = async () => {
+      const token = localStorage.getItem("access_token");
+      
+      try {
+        const [statsRes, subsRes] = await Promise.all([
+          fetch("http://127.0.0.1:5000/dashboard", {
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${token}`
+            }
+          }),
+          fetch("http://127.0.0.1:5000/subscriptions")
+        ]);
+
+        if (statsRes.ok) setStats(await statsRes.json());
+        if (subsRes.ok) setSubscriptions(await subsRes.json());
+
+      } catch (err) {
+        console.error("Error fetching dashboard data:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
   }, []);
 
   const actions = [
@@ -55,6 +59,8 @@ useEffect(() => {
     { label: "Expenses", icon: <FaReceipt />, route: "/expenses" },
     { label: "Update Profile", icon: <FaUserCog />, route: "/admin/update" },
   ];
+
+  if (loading) return <Loader message="Loading Dashboard..." />;
 
   return (
     <div className="dashboard-wrapper">

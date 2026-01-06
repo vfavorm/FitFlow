@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import axios from "axios"; // Use axios for consistency
 import "./PaymentList.css"; // Use new stylesheet
 import { useNavigate } from "react-router-dom";
+import Loader from "./Loader";
 
 function PaymentsList() {
   const [payments, setPayments] = useState([]);
@@ -31,7 +32,7 @@ function PaymentsList() {
   }, []);
 
   if (loading) {
-    return <div className="loading">Loading payments...</div>;
+    return <Loader message="Loading payments..." />;
   }
 
   return (

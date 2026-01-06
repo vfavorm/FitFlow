@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import "./Auth.css"; // Use the shared Auth.css for styling
+import Loader from "./Loader";
 
 function UpdateAdmin() {
   const [formData, setFormData] = useState({
@@ -73,7 +74,7 @@ function UpdateAdmin() {
     }
   };
 
-  if (isFetching) return <div className="loading">Loading profile...</div>;
+  if (isFetching) return <Loader message="Loading profile..." />;
 
   return (
     <div className="auth-container">

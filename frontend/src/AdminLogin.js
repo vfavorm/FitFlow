@@ -25,7 +25,7 @@ function AdminLogin() {
     <div className="auth-container">
       <div className="auth-card">
         <img
-          src="https://cdn-icons-png.flaticon.com/128/3033/3033143.png" // Using a more distinct admin icon
+          src="https://cdn-icons-png.flaticon.com/128/3033/3033143.png" 
           alt="Admin Icon"
           className="auth-icon"
         />

@@ -3,12 +3,14 @@ import axios from "axios";
 import "./Auth.css"; // For shared input/button styles
 import "./Payment.css";
 import { useNavigate } from "react-router-dom";
+import Loader from "./Loader";
 
 const MpesaPayment = () => {
   const [plans, setPlans] = useState([]);
   const [selectedPlan, setSelectedPlan] = useState("");
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
   const [message, setMessage] = useState("");
   const navigate = useNavigate();
   const Popup = ({ message, onClose }) => {
@@ -36,10 +38,14 @@ const MpesaPayment = () => {
         setPlans(res.data);
       } catch (err) {
         console.error("Failed to fetch plans", err);
+      } finally {
+        setPageLoading(false);
       }
     };
     fetchPlans();
   }, [token]);
+
+  if (pageLoading) return <Loader message="Loading Payment Options..." />;
 
   const handlePayment = async (e) => {
     e.preventDefault();
@@ -74,7 +80,7 @@ const MpesaPayment = () => {
 
   return (
     <div className="auth-container">
-      <div className="auth-card">
+      <div className="auth-card mpesa-card">
         <h2>M-PESA Subscription Payment</h2>
         <form onSubmit={handlePayment}>
           <div className="form-group">
@@ -84,12 +90,15 @@ const MpesaPayment = () => {
             onChange={(e) => setSelectedPlan(e.target.value)}
             className="input-field"
           >
-            <option value="">-- Choose a plan --</option>
-            {plans.map((plan) => (
-              <option key={plan.id} value={plan.name}>
-                {plan.name} - KES {plan.price}
-              </option>
-            ))}
+        <option value="">-- Choose a plan --</option>
+        {plans.map((plan) => {
+          const label = `${plan.name} - KES ${plan.price}`;
+          return (
+            <option key={plan.id} value={plan.name}>
+              {label.length > 40 ? label.substring(0, 37) + "..." : label}
+            </option>
+              );
+            })}
           </select>
           </div>
 
