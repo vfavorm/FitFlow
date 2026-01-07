@@ -44,7 +44,7 @@ function AddExpense() {
     try {
       const token = localStorage.getItem("access_token");
       const res = await axios.post(
-        "http://localhost:5000/addExpense",
+        "https://fitflow-1-aqnu.onrender.com/addExpense",
         formData,
         { headers: { Authorization: `Bearer ${token}` } }
       );

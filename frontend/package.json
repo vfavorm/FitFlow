@@ -15,7 +15,7 @@
     "react-scripts": "5.0.1",
     "web-vitals": "^2.1.4"
   },
-  "proxy": "http://localhost:5000",
+  "proxy": "https://fitflow-1-aqnu.onrender.com",
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",

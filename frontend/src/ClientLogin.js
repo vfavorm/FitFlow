@@ -11,7 +11,7 @@ function ClientLogin() {
 
   const handleLogin = async () => {
     try {
-      const res = await axios.post("http://localhost:5000/client/login", { email, password });
+      const res = await axios.post("https://fitflow-1-aqnu.onrender.com/client/login", { email, password });
       const token = res.data.access_token;
       localStorage.setItem("access_token", token);
       setMessage("Login successful!");

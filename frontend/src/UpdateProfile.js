@@ -18,7 +18,7 @@ const ClientUpdate = () => {
     const fetchClient = async () => {
       try {
         setIsFetching(true);
-        const res = await axios.get("http://localhost:5000/dashboard/client", {
+        const res = await axios.get("https://fitflow-1-aqnu.onrender.com/dashboard/client", {
           headers: { Authorization: `Bearer ${token}` },
         });
         setClient(res.data.client);
@@ -41,7 +41,7 @@ const ClientUpdate = () => {
 
     try {
       const res = await axios.patch(
-        `http://localhost:5000/clients/${client.id}`,
+        `https://fitflow-1-aqnu.onrender.com/clients/${client.id}`,
         {
           first_name: client.first_name,
           last_name: client.last_name,

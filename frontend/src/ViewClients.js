@@ -40,12 +40,12 @@ const ClientsList = () => {
           status: statusFilter !== 'all' ? statusFilter : undefined
         };
 
-        const response = await axios.get('http://localhost:5000/clients', {
+        const response = await axios.get('https://fitflow-1-aqnu.onrender.com/clients', {
           headers: { Authorization: `Bearer ${token}` },
           params
         });
 
-        const subsResponse = await axios.get('http://localhost:5000/subscriptions', {
+        const subsResponse = await axios.get('https://fitflow-1-aqnu.onrender.com/subscriptions', {
           headers: { Authorization: `Bearer ${token}` }
         });
 
@@ -83,7 +83,7 @@ const ClientsList = () => {
     try {
       const token = localStorage.getItem("access_token");
       const response = await axios.patch(
-        `http://localhost:5000/clients/${editingClient}`,
+        `https://fitflow-1-aqnu.onrender.com/clients/${editingClient}`,
         {
           first_name: formData.first_name,
           last_name: formData.last_name,
@@ -119,7 +119,7 @@ const ClientsList = () => {
 
     try {
       const token = localStorage.getItem("access_token");
-      const response = await axios.delete(`http://localhost:5000/clients/${clientId}`, {
+      const response = await axios.delete(`https://fitflow-1-aqnu.onrender.com/clients/${clientId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setClients(prev => prev.filter(client => client.id !== clientId));

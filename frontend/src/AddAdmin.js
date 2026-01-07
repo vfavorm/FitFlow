@@ -29,7 +29,7 @@ function AddAdmin() {
 
     try {
       const res = await axios.post(
-        "http://localhost:5000/add/admin",
+        "https://fitflow-1-aqnu.onrender.com/add/admin",
         formData, // The form data now includes the secret_code
         { headers: { Authorization: `Bearer ${token}` } }
       );

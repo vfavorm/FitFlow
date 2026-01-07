@@ -25,10 +25,10 @@ const PaymentLoggingForm = () => {
       try {
         const token = localStorage.getItem("access_token");
         
-        const clientsRes = await axios.get("http://localhost:5000/clients", {
+        const clientsRes = await axios.get("https://fitflow-1-aqnu.onrender.com/clients", {
           headers: { Authorization: `Bearer ${token}` },
         });
-        const subsRes = await axios.get("http://localhost:5000/subscriptions", {
+        const subsRes = await axios.get("https://fitflow-1-aqnu.onrender.com/subscriptions", {
           headers: { Authorization: `Bearer ${token}` },
         });
 
@@ -79,7 +79,7 @@ const PaymentLoggingForm = () => {
       };
 
       const { data } = await axios.post(
-        "http://localhost:5000/markCashPayment",
+        "https://fitflow-1-aqnu.onrender.com/markCashPayment",
         payload,
         { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }
       );

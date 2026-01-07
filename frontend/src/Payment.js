@@ -32,7 +32,7 @@ const MpesaPayment = () => {
   useEffect(() => {
     const fetchPlans = async () => {
       try {
-        const res = await axios.get("http://localhost:5000/subscriptions", {
+        const res = await axios.get("https://fitflow-1-aqnu.onrender.com/subscriptions", {
           headers: { Authorization: `Bearer ${token}` },
         });
         setPlans(res.data);
@@ -60,7 +60,7 @@ const MpesaPayment = () => {
 
     try {
       const res = await axios.post(
-        "http://localhost:5000/start/payment",
+        "https://fitflow-1-aqnu.onrender.com/start/payment",
         {
           plan_name: selectedPlan,
           phone_number: phone,

@@ -37,7 +37,7 @@ function ResetPassword() {
     setLoading(true);
     try {
       const res = await axios.post(
-        "http://localhost:5000/reset-password",
+        "https://fitflow-1-aqnu.onrender.com/reset-password",
         { new_password: password },
         { headers: { Authorization: `Bearer ${token}` } }
       );
