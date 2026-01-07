@@ -8,7 +8,7 @@ load_dotenv()
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 class Config:
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URI', 'sqlite:///app.db')
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URI',"postgresql://fitflow_u9q2_user:UIcR0nhGnbiFBqMjtIltXrcvrU7frBYO@dpg-d5f494qli9vc73dbiotg-a.singapore-postgres.render.com/fitflow_u9q2")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SECRET_KEY = os.environ.get('JWT_SECRET_KEY')
     # CORS configuration
