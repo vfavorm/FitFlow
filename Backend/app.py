@@ -34,7 +34,7 @@ api = Api(app)
 jwt = JWTManager(app)
 
 CORS(app, 
-     origins="http://localhost:3000",
+     origins="https://fit-flow-gym-management-git-main-favors-projects-47fb2718.vercel.app",
      supports_credentials=True,
      allow_headers=["Content-Type", "Authorization"],
      methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
