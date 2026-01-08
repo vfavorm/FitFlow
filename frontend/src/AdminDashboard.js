@@ -30,13 +30,13 @@ function AdminDashboard() {
       
       try {
         const [statsRes, subsRes] = await Promise.all([
-          fetch("http://127.0.0.1:5000/dashboard", {
+          fetch("https://fitflow-1-aqnu.onrender.com//dashboard", {
             headers: {
               "Content-Type": "application/json",
               "Authorization": `Bearer ${token}`
             }
           }),
-          fetch("http://127.0.0.1:5000/subscriptions")
+          fetch("https://fitflow-1-aqnu.onrender.com//subscriptions")
         ]);
 
         if (statsRes.ok) setStats(await statsRes.json());

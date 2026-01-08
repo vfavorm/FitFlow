@@ -16,7 +16,7 @@ function PaymentsList() {
 
     const fetchPayments = async () => {
       try {
-        const res = await axios.get("http://127.0.0.1:5000/client/payments", {
+        const res = await axios.get("https://fitflow-1-aqnu.onrender.com//client/payments", {
           headers: { Authorization: `Bearer ${token}` },
         });
         setPayments(res.data);
