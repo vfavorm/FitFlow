@@ -648,7 +648,7 @@ class AddClient(Resource):
 
             # Create reset token and link
             reset_token = create_access_token(identity=new_client.email, expires_delta=timedelta(hours=1))
-            reset_link = f"http://localhost:3000/reset-password?token={reset_token}"
+            reset_link = f"https://fit-flow-omega.vercel.app/reset-password?token={reset_token}"
 
             # Send welcome email
             send_email(
@@ -1412,7 +1412,7 @@ class ForgotPassword(Resource):
 
         # Generate a reset token (30 mins expiry)
         reset_token = create_access_token(identity=user.email, expires_delta=timedelta(minutes=30))
-        reset_link = f"http://localhost:3000/reset-password?token={reset_token}"
+        reset_link = f"https://fit-flow-omega.vercel.app/reset-password?token={reset_token}"
 
         # Send email
         send_email(
