@@ -52,8 +52,8 @@ class Subscription(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String, nullable=False)  
-    price = db.Column(db.Float, nullable=False)
-    duration_days = db.Column(db.Integer, nullable=False) 
+    price = db.Column(db.Float, nullable=True)
+    duration_days = db.Column(db.Integer, nullable=True) 
 
     def to_dict(self):
         return {
