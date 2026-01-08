@@ -121,7 +121,7 @@ function AdminDashboard() {
               {subscriptions.map((sub) => (
                 <li key={sub.id} className="subscription-item">
                   <div className="sub-name">{sub.name}</div>
-                  <div className="sub-price">${sub.price}</div>
+                  <div className="sub-price">Ksh. {sub.price}</div>
                   <div className="sub-duration">{sub.duration_days} days</div>
                 </li>
               ))}
