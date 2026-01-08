@@ -1518,6 +1518,46 @@ api.add_resource(AdminDetails, "/admin/details")
 api.add_resource(InvoiceList, "/client/invoices")
 
 
+# setup_db.py
+subscriptions_data = [
+    {"name": "Daily", "price": 400.0, "duration_days": 1},
+    {"name": "Weekly", "price": 1500.0, "duration_days": 7},
+    {"name": "2 Weeks", "price": 2500.0, "duration_days": 14},
+    {"name": "Monthly", "price": 4000.0, "duration_days": 30},
+    {"name": "Students Monthly", "price": 3000.0, "duration_days": 30}, # Fixed spelling of "Students"
+    {"name": "Quarterly", "price": 10000.0, "duration_days": 90},
+    {"name": "Personal Trainer", "price": 0.0, "duration_days": 0} 
+]
+
+def create_tables_and_seed():
+    with app.app_context():
+        # 1. Create tables
+        db.create_all()
+        print("✅ Tables created (if they didn't exist).")
+
+        # 2. Seed Subscriptions
+        for s in subscriptions_data:
+            # Check if it already exists to avoid duplicates/errors
+            existing_sub = Subscription.query.filter_by(name=s["name"]).first()
+            
+            if not existing_sub:
+                new_sub = Subscription(
+                    name=s["name"],
+                    price=s["price"],
+                    duration_days=s["duration_days"]
+                )
+                db.session.add(new_sub)
+                print(f"   -> Added subscription: {s['name']}")
+            else:
+                print(f"   -> Skipped {s['name']} (already exists)")
+
+        db.session.commit()
+        print("🎉 Database seeding completed!")
 
 if __name__ == '__main__':
-    app.run(port=5000)
+    # 1. Run the seeding logic FIRST
+    create_tables_and_seed()
+    
+    # 2. THEN start the server
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
