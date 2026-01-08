@@ -1518,46 +1518,75 @@ api.add_resource(AdminDetails, "/admin/details")
 api.add_resource(InvoiceList, "/client/invoices")
 
 
-# setup_db.py
+# DATABASE SEEDING LOGIC
+# ---------------------------------------------------------
+
 subscriptions_data = [
     {"name": "Daily", "price": 400.0, "duration_days": 1},
     {"name": "Weekly", "price": 1500.0, "duration_days": 7},
     {"name": "2 Weeks", "price": 2500.0, "duration_days": 14},
     {"name": "Monthly", "price": 4000.0, "duration_days": 30},
-    {"name": "Students Monthly", "price": 3000.0, "duration_days": 30}, # Fixed spelling of "Students"
+    {"name": "Students Monthly", "price": 3000.0, "duration_days": 30}, 
     {"name": "Quarterly", "price": 10000.0, "duration_days": 90},
     {"name": "Personal Trainer", "price": 0.0, "duration_days": 0} 
 ]
 
-def create_tables_and_seed():
-    with app.app_context():
-        # 1. Create tables
-        db.create_all()
-        print("✅ Tables created (if they didn't exist).")
+def seed_database_logic():
+    """
+    This function handles the actual logic of creating tables 
+    and adding subscriptions.
+    """
+    # 1. Create tables if they don't exist
+    db.create_all()
+    print("✅ Tables checked/created.")
 
-        # 2. Seed Subscriptions
-        for s in subscriptions_data:
-            # Check if it already exists to avoid duplicates/errors
-            existing_sub = Subscription.query.filter_by(name=s["name"]).first()
-            
-            if not existing_sub:
-                new_sub = Subscription(
-                    name=s["name"],
-                    price=s["price"],
-                    duration_days=s["duration_days"]
-                )
-                db.session.add(new_sub)
-                print(f"   -> Added subscription: {s['name']}")
-            else:
-                print(f"   -> Skipped {s['name']} (already exists)")
+    # 2. Seed Subscriptions
+    for s in subscriptions_data:
+        # Check if it already exists to avoid duplicates
+        existing_sub = Subscription.query.filter_by(name=s["name"]).first()
+        
+        if not existing_sub:
+            new_sub = Subscription(
+                name=s["name"],
+                price=s["price"],
+                duration_days=s["duration_days"]
+            )
+            db.session.add(new_sub)
+            print(f"   -> Added subscription: {s['name']}")
+        else:
+            print(f"   -> Skipped {s['name']} (already exists)")
 
-        db.session.commit()
-        print("🎉 Database seeding completed!")
+    db.session.commit()
+    print("🎉 Database seeding completed!")
 
+# ---------------------------------------------------------
+# OPTION 1: FLASK CLI COMMAND (Best for Local/Terminal)
+# ---------------------------------------------------------
+@app.cli.command("seed-db")
+def seed_db():
+    """Seeds the database via command line: flask seed-db"""
+    seed_database_logic()
+
+# ---------------------------------------------------------
+# OPTION 2: URL ROUTE (Best for Vercel/Production)
+# ---------------------------------------------------------
+@app.route('/seed-database', methods=['GET'])
+def seed_db_route():
+    """
+    Triggers the database seed via browser.
+    Visit: https://your-app-url.com/seed-database
+    """
+    try:
+        seed_database_logic()
+        return jsonify({"message": "Database seeded successfully!", "status": "success"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e), "status": "failed"}), 500
+
+# ---------------------------------------------------------
+# MAIN EXECUTION
+# ---------------------------------------------------------
 if __name__ == '__main__':
-    # 1. Run the seeding logic FIRST
-    create_tables_and_seed()
-    
-    # 2. THEN start the server
     port = int(os.environ.get("PORT", 5000))
+    # Note: We do NOT put the seed logic here, because this block 
+    # is often skipped in production.
     app.run(host="0.0.0.0", port=port)
