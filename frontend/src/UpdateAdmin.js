@@ -59,7 +59,7 @@ function UpdateAdmin() {
     setMessage("");
 
     try {
-      const res = await axios.put(
+      const res = await axios.patch(
         "https://fitflow-gym-prod.azurewebsites.net/admin/update",
         formData,
         { headers: { Authorization: `Bearer ${token}` } }
