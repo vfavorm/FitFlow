@@ -30,7 +30,7 @@ function AdminDashboard() {
       
       try {
         const [statsRes, subsRes] = await Promise.all([
-          fetch("https://fitflow-gym-prod.azurewebsites.net//dashboard", {
+          fetch("https://fitflow-gym-prod.azurewebsites.net/dashboard", {
             headers: {
               "Content-Type": "application/json",
               "Authorization": `Bearer ${token}`
