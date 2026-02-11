@@ -1385,7 +1385,7 @@ class AdminUpdate(Resource):
         # Update password if old_password and new_password are provided
         if data.get("old_password") and data.get("new_password"):
             try:
-                if not check_password(admin.password_hash, data["old_password"]):
+                if not check_password(data["old_password"], admin.password_hash):
                     return {"message": "Old password is incorrect"}, 400
             except ValueError:
                 # Catch invalid hash
@@ -1501,7 +1501,7 @@ class InvoiceList(Resource):
 
 api.add_resource(ForgotPassword, "/forgot-password")
 api.add_resource(ResetPasswordConfirm, "/reset-password")
-api.add_resource(AdminUpdate, "/admin/update")
+api.add_resource(AdminUpdate, "/admin/update", endpoint="admin_update", methods=["PATCH"])
 api.add_resource(MpesaInitiate, '/start/payment') 
 api.add_resource(AddMpesaPaymentNCallback, '/callback')
 api.add_resource(CreateAdmin, '/admin/create') 
