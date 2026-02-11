@@ -25,7 +25,7 @@ const Invoices = () => {
         }
 
         // Fetching all invoices for the logged-in client
-        const response = await axios.get('https://fitflow-1-aqnu.onrender.com/client/invoices', {
+        const response = await axios.get('https://fitflow-gym-prod.azurewebsites.net/client/invoices', {
           headers: { Authorization: `Bearer ${token}` }
         });
 

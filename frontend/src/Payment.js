@@ -32,7 +32,7 @@ const MpesaPayment = () => {
   useEffect(() => {
     const fetchPlans = async () => {
       try {
-        const res = await axios.get("https://fitflow-1-aqnu.onrender.com/subscriptions", {
+        const res = await axios.get("https://fitflow-gym-prod.azurewebsites.net/subscriptions", {
           headers: { Authorization: `Bearer ${token}` },
         });
         setPlans(res.data);
@@ -60,7 +60,7 @@ const MpesaPayment = () => {
 
     try {
       const res = await axios.post(
-        "https://fitflow-1-aqnu.onrender.com/start/payment",
+        "https://fitflow-gym-prod.azurewebsites.net/start/payment",
         {
           plan_name: selectedPlan,
           phone_number: phone,

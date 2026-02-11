@@ -8,7 +8,7 @@ function ForgotPassword() {
 
   const handleSubmit = async () => {
     try {
-      const res = await axios.post("https://fitflow-1-aqnu.onrender.com/forgot-password", {
+      const res = await axios.post("https://fitflow-gym-prod.azurewebsites.net/forgot-password", {
         email,
       });
       setMessage(res.data.message);

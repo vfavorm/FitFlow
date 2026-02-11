@@ -11,7 +11,7 @@
 
     const handleLogin = async () => {
       try {
-        const res = await axios.post("https://fitflow-1-aqnu.onrender.com/admin/login", { email, password });
+        const res = await axios.post("https://fitflow-gym-prod.azurewebsites.net/admin/login", { email, password });
         const token = res.data.access_token;
         localStorage.setItem("access_token", token);
         setMessage("Login successful!");

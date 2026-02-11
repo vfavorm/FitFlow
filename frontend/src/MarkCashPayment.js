@@ -25,10 +25,10 @@ const PaymentLoggingForm = () => {
       try {
         const token = localStorage.getItem("access_token");
         
-        const clientsRes = await axios.get("https://fitflow-1-aqnu.onrender.com/clients", {
+        const clientsRes = await axios.get("https://fitflow-gym-prod.azurewebsites.net/clients", {
           headers: { Authorization: `Bearer ${token}` },
         });
-        const subsRes = await axios.get("https://fitflow-1-aqnu.onrender.com/subscriptions", {
+        const subsRes = await axios.get("https://fitflow-gym-prod.azurewebsites.net/subscriptions", {
           headers: { Authorization: `Bearer ${token}` },
         });
 
@@ -79,7 +79,7 @@ const PaymentLoggingForm = () => {
       };
 
       const { data } = await axios.post(
-        "https://fitflow-1-aqnu.onrender.com/markCashPayment",
+        "https://fitflow-gym-prod.azurewebsites.net/markCashPayment",
         payload,
         { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }
       );

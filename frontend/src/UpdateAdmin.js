@@ -28,7 +28,7 @@ function UpdateAdmin() {
         setIsFetching(true);
         // This endpoint assumes you have a way to get current admin details.
         // If not, you might need to create a '/admin/details' endpoint.
-        const res = await axios.get("https://fitflow-1-aqnu.onrender.com/admin/details", {
+        const res = await axios.get("https://fitflow-gym-prod.azurewebsites.net/admin/details", {
           headers: { Authorization: `Bearer ${token}` },
         });
         setFormData((prev) => ({
@@ -60,7 +60,7 @@ function UpdateAdmin() {
 
     try {
       const res = await axios.put(
-        "https://fitflow-1-aqnu.onrender.com/admin/update",
+        "https://fitflow-gym-prod.azurewebsites.net/admin/update",
         formData,
         { headers: { Authorization: `Bearer ${token}` } }
       );

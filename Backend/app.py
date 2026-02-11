@@ -39,6 +39,13 @@ CORS(app,
      allow_headers=["Content-Type", "Authorization"],
      methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 
+if __name__ != '__main__':
+    # Production logging
+    import logging
+    gunicorn_logger = logging.getLogger('gunicorn.error')
+    app.logger.handlers = gunicorn_logger.handlers
+    app.logger.setLevel(gunicorn_logger.level)
+    
 @jwt.token_in_blocklist_loader
 def check_if_token_revoked(jwt_header, jwt_payload):
     jti = jwt_payload["jti"]
@@ -295,7 +302,7 @@ def send_monthly_report():
             pdf.cell(40, 8, "Cost", border=1, ln=True)
             for e in expenses:
                 pdf.cell(50, 8, e.created_at.strftime('%d-%b-%Y'), border=1)
-                pdf.cell(80, 8, e.description, border=1)
+                pdf.cell(80, 8, e.expense, border=1)  # Fixed: use e.expense instead of e.description
                 pdf.cell(40, 8, f"KES {e.cost:.2f}", border=1, ln=True)
         else:
             pdf.cell(0, 8, "No expenses recorded.", ln=True)
@@ -1581,6 +1588,59 @@ def seed_db_route():
         return jsonify({"message": "Database seeded successfully!", "status": "success"}), 200
     except Exception as e:
         return jsonify({"error": str(e), "status": "failed"}), 500
+
+# ---------------------------------------------------------
+# OPTION 3: DATABASE RESET ENDPOINT (For Future Resets)
+# ---------------------------------------------------------
+@app.route('/reset-database', methods=['POST'])
+def reset_database():
+    """
+    Reset database - drop all tables and recreate with fresh seed data
+    WARNING: This will DELETE ALL DATA!
+    """
+    try:
+        # Security: Add a secret key check
+        secret = request.json.get('secret') if request.is_json else None
+        
+        # Use your admin secret for protection
+        if secret != os.getenv('ADMIN_CREATION_SECRET'):
+            return jsonify({
+                'message': 'Unauthorized - invalid secret',
+                'status': 'error'
+            }), 401
+        
+        # Drop all tables
+        db.drop_all()
+        
+        # Create all tables (with updated schema)
+        db.create_all()
+        
+        # Seed subscriptions
+        subscriptions = [
+            Subscription(name='Daily', price=400, duration_days=1),
+            Subscription(name='Weekly', price=1500, duration_days=7),
+            Subscription(name='2 Weeks', price=2500, duration_days=14),
+            Subscription(name='Monthly', price=4000, duration_days=30),
+            Subscription(name='Students Monthly', price=3000, duration_days=30),
+            Subscription(name='Quarterly', price=10000, duration_days=90),
+            Subscription(name='Personal Trainer', price=0, duration_days=0)
+        ]
+        
+        db.session.add_all(subscriptions)
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Database reset and seeded successfully!',
+            'status': 'success',
+            'subscriptions_count': len(subscriptions)
+        }), 200
+    
+    except Exception as e:
+        return jsonify({
+            'message': 'Database reset failed',
+            'error': str(e),
+            'status': 'error'
+        }), 500
 
 # ---------------------------------------------------------
 # MAIN EXECUTION

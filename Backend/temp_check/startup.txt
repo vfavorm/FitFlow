@@ -1,0 +1,8 @@
+#!/bin/bash
+
+# Install dependencies
+pip install --upgrade pip
+pip install -r requirements.txt
+
+# Start gunicorn (production WSGI server)
+gunicorn --bind=0.0.0.0:8000 --timeout 600 --workers 2 app:app

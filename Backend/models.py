@@ -22,7 +22,6 @@ class Client(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_payment_date = db.Column(db.DateTime)
     last_payment_amount = db.Column(db.Float)
-    account_balance = db.Column(db.Float, nullable=False, default=0)
         
     
     subscription_id = db.Column(db.Integer, db.ForeignKey('subscriptions.id'))
@@ -41,7 +40,6 @@ class Client(db.Model):
             "subscription": self.subscription.name if self.subscription else None,
             "subscription_expiry": self.subscription_expiry.isoformat() if self.subscription_expiry else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
-            "account_balance": self.account_balance
         }
 
     def __repr__(self):

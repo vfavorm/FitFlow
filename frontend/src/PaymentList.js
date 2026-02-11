@@ -16,7 +16,7 @@ function PaymentsList() {
 
     const fetchPayments = async () => {
       try {
-        const res = await axios.get("https://fitflow-1-aqnu.onrender.com//client/payments", {
+        const res = await axios.get("https://fitflow-gym-prod.azurewebsites.net//client/payments", {
           headers: { Authorization: `Bearer ${token}` },
         });
         setPayments(res.data);

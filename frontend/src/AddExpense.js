@@ -44,7 +44,7 @@ function AddExpense() {
     try {
       const token = localStorage.getItem("access_token");
       const res = await axios.post(
-        "https://fitflow-1-aqnu.onrender.com/addExpense",
+        "https://fitflow-gym-prod.azurewebsites.net/addExpense",
         formData,
         { headers: { Authorization: `Bearer ${token}` } }
       );

@@ -25,7 +25,7 @@ useEffect(() => {
       if (filters.month) params.month = filters.month;
       if (filters.year) params.year = filters.year;
 
-      const res = await axios.get("https://fitflow-1-aqnu.onrender.com/expenses", {
+      const res = await axios.get("https://fitflow-gym-prod.azurewebsites.net/expenses", {
         headers: {
           Authorization: `Bearer ${token}`,
         },

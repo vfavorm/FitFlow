@@ -37,7 +37,7 @@ function ResetPassword() {
     setLoading(true);
     try {
       const res = await axios.post(
-        "https://fitflow-1-aqnu.onrender.com/reset-password",
+        "https://fitflow-gym-prod.azurewebsites.net/reset-password",
         { new_password: password },
         { headers: { Authorization: `Bearer ${token}` } }
       );

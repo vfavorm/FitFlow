@@ -16,7 +16,7 @@ const ClientDashboard = () => {
     const fetchDashboard = async () => {
       try {
         // Fetch client details
-        const resClient = await axios.get('https://fitflow-1-aqnu.onrender.com/dashboard/client', {
+        const resClient = await axios.get('https://fitflow-gym-prod.azurewebsites.net/dashboard/client', {
           headers: { Authorization: `Bearer ${token}` }
         });
         setClient(resClient.data.client);

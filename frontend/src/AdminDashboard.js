@@ -30,13 +30,13 @@ function AdminDashboard() {
       
       try {
         const [statsRes, subsRes] = await Promise.all([
-          fetch("https://fitflow-1-aqnu.onrender.com//dashboard", {
+          fetch("https://fitflow-gym-prod.azurewebsites.net//dashboard", {
             headers: {
               "Content-Type": "application/json",
               "Authorization": `Bearer ${token}`
             }
           }),
-          fetch("https://fitflow-1-aqnu.onrender.com//subscriptions")
+          fetch("https://fitflow-gym-prod.azurewebsites.net//subscriptions")
         ]);
 
         if (statsRes.ok) setStats(await statsRes.json());

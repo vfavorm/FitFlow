@@ -63,7 +63,7 @@ function AddClient() {
       const token = localStorage.getItem("access_token");
 
       const res = await axios.post(
-        "https://fitflow-1-aqnu.onrender.com/addClient",
+        "https://fitflow-gym-prod.azurewebsites.net/addClient",
         formData,
         {
           headers: {
